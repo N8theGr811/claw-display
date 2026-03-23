@@ -1,0 +1,38 @@
+# systemd service file for Claw Display daemon
+# Runs the daemon as a background service that starts on boot.
+#
+# INSTALL:
+#   sudo cp claw-display.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable claw-display
+#   sudo systemctl start claw-display
+#
+# MANAGE:
+#   sudo systemctl status claw-display    # check if running
+#   sudo systemctl stop claw-display      # stop
+#   sudo systemctl restart claw-display   # restart
+#   journalctl -u claw-display -f         # view live logs
+#
+# NOTE: Update User, WorkingDirectory, ExecStart, and --port
+# to match your system. Run `ls /dev/ttyACM* /dev/ttyUSB*` to find port.
+
+[Unit]
+Description=Claw Display - OpenClaw Agent Status Display
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=nathanmarkham
+WorkingDirectory=/home/nathanmarkham/claw-display
+ExecStart=/usr/bin/node src/index.js --port /dev/ttyACM0
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Give the service access to the serial port
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target
