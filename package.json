@@ -1,0 +1,19 @@
+{
+  "name": "claw-display",
+  "version": "0.1.0",
+  "description": "USB status display daemon for OpenClaw AI agents. Polls the local OpenClaw gateway and drives an ESP32 round display over serial.",
+  "main": "src/index.js",
+  "bin": {
+    "claw-display": "src/index.js"
+  },
+  "dependencies": {
+    "serialport": "^12.0.0",
+    "@serialport/parser-readline": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["openclaw", "esp32", "serial", "display", "status"],
+  "license": "UNLICENSED",
+  "private": true
+}
