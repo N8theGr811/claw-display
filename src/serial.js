@@ -142,25 +142,44 @@ class SerialConnection {
             this.parser = this.port.pipe(new ReadlineParser({ delimiter: '\n' }));
 
             // --- Handshake: wait for "OK" from device ---
+            // The device sends OK on boot, but if we connect after boot
+            // we need to send PING to get a fresh OK response.
+            let handshakeResolved = false;
+
             const timeout = setTimeout(() => {
-                if (this.port?.isOpen) {
-                    this.port.close();
+                if (!handshakeResolved) {
+                    if (this.port?.isOpen) {
+                        this.port.close();
+                    }
+                    reject(new Error(
+                        `Handshake timeout: no "OK" received within ${HANDSHAKE_TIMEOUT_MS}ms. ` +
+                        'Is the firmware flashed and running?'
+                    ));
                 }
-                reject(new Error(
-                    `Handshake timeout: no "OK" received within ${HANDSHAKE_TIMEOUT_MS}ms. ` +
-                    'Is the firmware flashed and running?'
-                ));
             }, HANDSHAKE_TIMEOUT_MS);
 
-            this.parser.once('data', (data) => {
+            this.parser.on('data', (data) => {
                 const trimmed = data.trim();
-                if (trimmed === 'OK') {
+                if (trimmed === 'OK' && !handshakeResolved) {
+                    handshakeResolved = true;
                     clearTimeout(timeout);
                     this.connected = true;
                     console.log(`Connected to Claw Display on ${portPath}`);
                     resolve();
                 }
             });
+
+            // Send PING after a short delay to handle the case where
+            // the device already booted and sent its initial OK before
+            // we connected. The PING triggers a fresh OK response.
+            setTimeout(() => {
+                if (!handshakeResolved && this.port?.isOpen) {
+                    if (this.verbose) {
+                        console.log('[serial] Sending PING for handshake...');
+                    }
+                    this.port.write('PING\n');
+                }
+            }, 500);
 
             // --- Handle disconnection ---
             this.port.on('close', () => {
