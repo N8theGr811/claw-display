@@ -1,69 +1,124 @@
 /**
- * poller.js - OpenClaw Gateway Status Poller
+ * poller.js - OpenClaw Agent Activity Poller
  * ============================================
  *
- * Polls the OpenClaw gateway's /status endpoint at a regular interval
- * to determine if an agent is actively working on a task.
+ * Detects whether an OpenClaw agent is actively working by polling
+ * session data via the `openclaw sessions` CLI command.
  *
- * The parsing logic is intentionally isolated in isAgentActive() so
- * it can be trivially updated if the OpenClaw API shape changes.
+ * WHY CLI INSTEAD OF HTTP:
+ * OpenClaw's gateway (port 18789) serves a web dashboard over HTTP,
+ * not a REST API. The actual data is accessed via WebSocket RPC or
+ * the CLI. The CLI is the simplest reliable method until OpenClaw
+ * ships a formal busy/idle API (tracked in GitHub issue #39127).
+ *
+ * HOW ACTIVITY IS DETECTED:
+ * We run `openclaw sessions --json --active 1` which returns sessions
+ * updated within the last 1 minute. If any session's token counts are
+ * increasing between polls, the agent is actively processing.
  *
  * DEBUGGING GUIDE:
  * ----------------
- * - "OpenClaw unreachable" in verbose mode: The gateway isn't running
- *   or isn't on port 18789. Start OpenClaw first, then the daemon.
- *   The daemon keeps polling and will pick it up automatically.
- * - Display never activates: Run the daemon with --verbose and check
- *   the API response. The field name for active tasks may differ from
- *   what isAgentActive() expects. Update the function accordingly.
- * - Display activates but never goes idle: Check that completed tasks
- *   actually remove from the active count in the API response.
- *
- * API RESPONSE FORMAT:
- * --------------------
- * The exact field name for active task count needs to be confirmed
- * against a live OpenClaw instance. isAgentActive() checks several
- * common field names as a best-effort fallback. When you have access
- * to a live instance, update this function to use the exact field.
+ * - "openclaw: command not found": OpenClaw isn't installed or not in PATH.
+ *   Install with `npm install -g openclaw` or check your PATH.
+ * - Display never activates: Run `openclaw sessions --json --active 1`
+ *   manually to see what it returns. Check if sessions exist.
+ * - Display stays active too long: The 1-minute active window + 5-second
+ *   debounce in state.js means it can take up to ~65 seconds to go idle.
  */
 
-const OPENCLAW_URL = 'http://localhost:18789/status';
+const { exec } = require('child_process');
+
 const POLL_INTERVAL_MS = 2000;  // Check every 2 seconds
 
+// Store previous token counts to detect activity (tokens increasing = working)
+let previousTokens = new Map();
+
 /**
- * Determine if the OpenClaw agent is actively working from an API response.
+ * Determine if any OpenClaw agent is actively working.
  *
- * This function is the ONLY place that knows the shape of the OpenClaw
- * API response. If the API changes, update this function and nothing else.
+ * Checks two signals:
+ * 1. Are there sessions updated within the last minute?
+ * 2. Are token counts increasing between polls? (strongest signal)
  *
- * @param {object|string} response - Parsed JSON or raw string from /status
- * @returns {boolean} true if agent has active tasks, false otherwise
+ * @param {Array} sessions - Parsed JSON array from openclaw sessions --json
+ * @returns {boolean} true if an agent appears to be actively working
  */
-function isAgentActive(response) {
-    try {
-        const data = typeof response === 'string' ? JSON.parse(response) : response;
-
-        // Try common field names for active task count.
-        // TODO: Confirm exact field name against a live OpenClaw instance
-        // and replace this multi-check with the correct single field.
-        const activeTasks =
-            data.activeTasks ??
-            data.active_tasks ??
-            data.ActiveTasks ??
-            data.runningTasks ??
-            data.running_tasks ??
-            0;
-
-        return Number(activeTasks) > 0;
-    } catch {
-        // If response isn't valid JSON or fields are missing, treat as idle
+function isAgentActive(sessions) {
+    if (!Array.isArray(sessions) || sessions.length === 0) {
         return false;
     }
+
+    let active = false;
+
+    for (const session of sessions) {
+        const id = session.sessionId || session.id || '';
+        const totalTokens = session.totalTokens || 0;
+
+        // Check if tokens increased since last poll (agent is generating)
+        const prevTokens = previousTokens.get(id) || 0;
+        if (totalTokens > prevTokens && prevTokens > 0) {
+            active = true;
+        }
+
+        previousTokens.set(id, totalTokens);
+    }
+
+    // Also consider "active" if there are very recently updated sessions
+    // (within last 30 seconds), even if we haven't seen token changes yet.
+    // This catches the start of a new task before tokens begin accumulating.
+    for (const session of sessions) {
+        const updatedAt = session.updatedAt || session.updated_at || '';
+        if (updatedAt) {
+            const updatedTime = new Date(updatedAt).getTime();
+            const now = Date.now();
+            if (now - updatedTime < 30000) {  // Updated within 30 seconds
+                active = true;
+            }
+        }
+    }
+
+    return active;
+}
+
+/**
+ * Run the openclaw CLI and return parsed JSON output.
+ *
+ * @returns {Promise<Array>} Parsed session data, or empty array on error
+ */
+function fetchSessions(verbose) {
+    return new Promise((resolve) => {
+        exec('openclaw sessions --json --active 1', {
+            timeout: 5000,  // Don't hang if CLI is stuck
+        }, (error, stdout, stderr) => {
+            if (error) {
+                if (verbose) {
+                    console.log(`[poller] CLI error: ${error.message}`);
+                }
+                resolve([]);
+                return;
+            }
+
+            try {
+                const data = JSON.parse(stdout);
+                if (verbose) {
+                    console.log(`[poller] Sessions: ${JSON.stringify(data).substring(0, 200)}...`);
+                }
+                // Handle both array and object-with-array responses
+                const sessions = Array.isArray(data) ? data : (data.sessions || data.data || []);
+                resolve(sessions);
+            } catch {
+                if (verbose) {
+                    console.log(`[poller] Failed to parse CLI output: ${stdout.substring(0, 100)}`);
+                }
+                resolve([]);
+            }
+        });
+    });
 }
 
 class OpenClawPoller {
     /**
-     * @param {boolean} verbose - Enable debug logging of API responses
+     * @param {boolean} verbose - Enable debug logging
      */
     constructor(verbose = false) {
         this.verbose = verbose;
@@ -79,48 +134,18 @@ class OpenClawPoller {
     }
 
     /**
-     * Execute a single poll against the OpenClaw gateway.
-     * Fires onStatus callback with the result.
+     * Execute a single poll.
      */
     async poll() {
-        try {
-            const response = await fetch(OPENCLAW_URL);
+        const sessions = await fetchSessions(this.verbose);
+        const active = isAgentActive(sessions);
 
-            if (!response.ok) {
-                if (this.verbose) {
-                    console.log(`[poller] HTTP ${response.status} from OpenClaw gateway`);
-                }
-                this._reportStatus(false);
-                return;
-            }
-
-            const data = await response.json();
-
-            if (this.verbose) {
-                console.log(`[poller] Response: ${JSON.stringify(data)}`);
-            }
-
-            const active = isAgentActive(data);
-            this._reportStatus(active);
-        } catch (err) {
-            if (this.verbose) {
-                console.log(`[poller] OpenClaw unreachable: ${err.message}`);
-            }
-            // Gateway unreachable = treat as idle.
-            // Polling continues at normal interval, so it automatically
-            // picks up when the gateway comes back online.
-            this._reportStatus(false);
+        if (this.verbose) {
+            console.log(`[poller] Active: ${active} (${sessions.length} recent sessions)`);
         }
-    }
 
-    /**
-     * Fire the onStatus callback if one is registered.
-     * @param {boolean} isActive
-     * @private
-     */
-    _reportStatus(isActive) {
         if (this.onStatus) {
-            this.onStatus(isActive);
+            this.onStatus(active);
         }
     }
 
@@ -143,4 +168,4 @@ class OpenClawPoller {
     }
 }
 
-module.exports = { OpenClawPoller, isAgentActive, OPENCLAW_URL, POLL_INTERVAL_MS };
+module.exports = { OpenClawPoller, isAgentActive, POLL_INTERVAL_MS };
