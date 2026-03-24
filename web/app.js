@@ -160,9 +160,19 @@ function renderAnimations(animations) {
         count.className = 'frame-count';
         count.textContent = `${anim.frameCount} frames`;
 
+        const flashBtn = document.createElement('button');
+        flashBtn.className = 'btn-flash-anim';
+        flashBtn.textContent = '⚡ Flash';
+        flashBtn.title = `Build & flash firmware with ${anim.name}`;
+        flashBtn.onclick = (e) => {
+            e.stopPropagation(); // Don't trigger selectAnimation
+            startFlash(anim.name);
+        };
+
         card.appendChild(img);
         card.appendChild(name);
         card.appendChild(count);
+        card.appendChild(flashBtn);
         grid.appendChild(card);
     }
 }
@@ -189,15 +199,24 @@ async function selectAnimation(name) {
 // 4. Flash Firmware
 // ============================================================================
 
-document.getElementById('btn-flash').addEventListener('click', async () => {
-    if (!confirm('Flash firmware to the device? The display will briefly disconnect.')) return;
+document.getElementById('btn-flash').addEventListener('click', () => startFlash(null));
 
-    document.getElementById('flash-output').textContent = 'Starting flash...\n';
+async function startFlash(animationName) {
+    const label = animationName ? `Flash ${animationName} to device?` : 'Flash firmware to the device?';
+    if (!confirm(`${label} The display will briefly disconnect.`)) return;
+
+    const prefix = animationName ? `Preparing ${animationName}...\n` : 'Starting flash...\n';
+    document.getElementById('flash-output').textContent = prefix;
     showModal('flash-modal');
     document.getElementById('btn-flash').disabled = true;
 
     try {
-        const res = await fetch('/api/flash', { method: 'POST' });
+        const body = animationName ? JSON.stringify({ animation: animationName }) : undefined;
+        const res = await fetch('/api/flash', {
+            method: 'POST',
+            headers: body ? { 'Content-Type': 'application/json' } : {},
+            body,
+        });
         const data = await res.json();
         if (data.error) {
             document.getElementById('flash-output').textContent += `Error: ${data.error}\n`;
@@ -206,7 +225,7 @@ document.getElementById('btn-flash').addEventListener('click', async () => {
     } catch (e) {
         document.getElementById('flash-output').textContent += `Error: ${e.message}\n`;
     }
-});
+}
 
 function updateFlashProgress(data) {
     const output = document.getElementById('flash-output');
