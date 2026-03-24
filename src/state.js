@@ -24,9 +24,9 @@
  */
 
 // How long to keep the display ACTIVE after the last active poll.
-// Prevents flicker from short tasks. 5 seconds is a good balance
-// between responsiveness and visual stability.
-const DEBOUNCE_MS = 5000;
+// Prevents flicker from short tasks. 2 seconds keeps it responsive
+// while avoiding rapid on/off toggling.
+const DEBOUNCE_MS = 2000;
 
 class StateMachine {
     constructor() {

@@ -22,8 +22,8 @@
  *   Install with `npm install -g openclaw` or check your PATH.
  * - Display never activates: Run `openclaw sessions --json --active 1`
  *   manually to see what it returns. Check if sessions exist.
- * - Display stays active too long: The 1-minute active window + 5-second
- *   debounce in state.js means it can take up to ~65 seconds to go idle.
+ * - Display stays active too long: The 5-second active window + 2-second
+ *   debounce in state.js means it can take up to ~9 seconds to go idle.
  */
 
 const { exec } = require('child_process');
@@ -71,7 +71,7 @@ function isAgentActive(sessions) {
         if (updatedAt) {
             const updatedTime = new Date(updatedAt).getTime();
             const now = Date.now();
-            if (now - updatedTime < 30000) {  // Updated within 30 seconds
+            if (now - updatedTime < 5000) {  // Updated within 5 seconds
                 active = true;
             }
         }
