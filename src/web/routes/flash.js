@@ -16,6 +16,7 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
+const { findPioCommand } = require('../pio');
 
 // Active flash jobs
 const jobs = {};
@@ -30,6 +31,14 @@ module.exports = function({ webServer, serial }) {
 
         if (!port) {
             webServer._sendJson(res, 400, { error: 'No serial port known. Connect the device first.' });
+            return;
+        }
+
+        const pio = findPioCommand();
+        if (!pio) {
+            webServer._sendJson(res, 500, {
+                error: 'PlatformIO not found. Install with: pipx install platformio (Linux) or pip install platformio (Windows/Mac)'
+            });
             return;
         }
 
@@ -54,11 +63,11 @@ module.exports = function({ webServer, serial }) {
                 // Extra delay for OS to fully release the port
                 await new Promise(r => setTimeout(r, 1000));
 
-                // Build flash command
-                const args = ['run', '--target', 'upload', '--upload-port', port];
-                console.log(`[flash] Running: pio ${args.join(' ')}`);
+                // Build flash command using detected PlatformIO path
+                const runArgs = [...pio.prefix, 'run', '--target', 'upload', '--upload-port', port];
+                console.log(`[flash] Running: ${pio.cmd} ${runArgs.join(' ')}`);
 
-                const proc = spawn('python', ['-m', 'platformio', ...args], {
+                const proc = spawn(pio.cmd, runArgs, {
                     cwd: firmwareDir,
                     shell: true,
                 });

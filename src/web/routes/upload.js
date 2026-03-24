@@ -20,8 +20,28 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const { findPioCommand } = require('../pio');
+
+const { execSync } = require('child_process');
 
 const jobs = {};
+
+/**
+ * Find python or python3, whichever is available.
+ * On Linux/Pi it's usually python3, on Windows it's python.
+ */
+let _pythonCache = null;
+function findPythonCommand() {
+    if (_pythonCache) return _pythonCache;
+    for (const cmd of ['python3', 'python']) {
+        try {
+            execSync(`${cmd} --version`, { stdio: 'pipe', timeout: 3000 });
+            _pythonCache = cmd;
+            return cmd;
+        } catch (e) { /* try next */ }
+    }
+    return 'python';
+}
 
 module.exports = function({ webServer, serial }) {
 
@@ -166,7 +186,8 @@ async function processUpload(job, name, fileBuffer, fileName, webServer, serial,
 
         // 2. Generate animation frames
         broadcast('Generating frames...');
-        await runCommand('python', [
+        const pythonCmd = findPythonCommand();
+        await runCommand(pythonCmd, [
             path.join(toolsDir, 'animate_static.py'),
             sourcePath,
             animDir + '/',
@@ -178,7 +199,7 @@ async function processUpload(job, name, fileBuffer, fileName, webServer, serial,
         broadcast('Converting to firmware format...');
         const prefix = name.slice(0, 3) + '_';
         const includeDir = path.join(framesIncludeDir, name);
-        await runCommand('python', [
+        await runCommand(pythonCmd, [
             path.join(toolsDir, 'png_to_rgb565.py'),
             animDir,
             includeDir,
@@ -192,7 +213,11 @@ async function processUpload(job, name, fileBuffer, fileName, webServer, serial,
 
         // 5. Rebuild firmware
         broadcast('Rebuilding firmware...');
-        await runCommand('python', ['-m', 'platformio', 'run'], broadcast, firmwareDir);
+        const pio = findPioCommand();
+        if (!pio) {
+            throw new Error('PlatformIO not found. Install with: pipx install platformio');
+        }
+        await runCommand(pio.cmd, [...pio.prefix, 'run'], broadcast, firmwareDir);
 
         // 6. Flash firmware
         broadcast('Flashing firmware...');
@@ -208,8 +233,8 @@ async function processUpload(job, name, fileBuffer, fileName, webServer, serial,
             }
             await new Promise(r => setTimeout(r, 1000));
 
-            await runCommand('python', [
-                '-m', 'platformio', 'run', '--target', 'upload', '--upload-port', port,
+            await runCommand(pio.cmd, [
+                ...pio.prefix, 'run', '--target', 'upload', '--upload-port', port,
             ], broadcast, firmwareDir);
 
             // 7. Reconnect and switch
