@@ -18,11 +18,11 @@
  *
  * MEMORY BUDGET:
  * Each 240x240 RGB565 frame = 112.5 KB flash.
- * ESP32-S3 has ~13MB usable flash. Budget ~100 frames total.
+ * ESP32-S3 has ~8MB usable flash with custom partition.
  * Lobster: 10 frames = 1.1 MB
  * Octopus: 16 frames = 1.8 MB
  * Octopus Emoji: 16 frames = 1.8 MB
- * Total: 42 frames = 4.7 MB (~36% of budget)
+ * Total: 42 frames = 4.7 MB (~56% of budget)
  */
 
 #pragma once

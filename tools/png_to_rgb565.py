@@ -46,12 +46,13 @@ EXPECTED_HEIGHT = 240
 
 def rgb888_to_rgb565_le(r, g, b):
     """
-    Convert a 24-bit RGB pixel to 16-bit RGB565, byte-swapped for little-endian.
+    Convert a 24-bit RGB pixel to 16-bit RGB565, byte-swapped for the GC9A01.
 
-    The GC9A01 display expects big-endian RGB565, but LovyanGFX's pushImage()
-    with uint16_t arrays handles the byte order internally. We store as
-    standard RGB565 (no manual byte swap needed when using pushImage with
-    uint16_t arrays).
+    LovyanGFX pushImage() expects byte-swapped (big-endian) RGB565 when
+    stored in uint16_t arrays on the little-endian ESP32. We swap the high
+    and low bytes so the display reads them correctly.
+
+    Without byte swap: colors appear with R and B channels mixed up.
 
     Args:
         r: Red channel (0-255)
@@ -59,9 +60,12 @@ def rgb888_to_rgb565_le(r, g, b):
         b: Blue channel (0-255)
 
     Returns:
-        16-bit RGB565 value as an integer
+        16-bit byte-swapped RGB565 value as an integer
     """
-    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+    # Standard RGB565: RRRRRGGG GGGBBBBB
+    rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+    # Byte-swap for big-endian display: GGGBBBBB RRRRRGGG
+    return ((rgb565 & 0xFF) << 8) | ((rgb565 >> 8) & 0xFF)
 
 
 def convert_frame(png_path, output_path, frame_name):
