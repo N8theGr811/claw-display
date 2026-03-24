@@ -90,6 +90,15 @@ module.exports = function({ webServer, serial }) {
             serial.send(`ANIM:${name}`);
             webServer.currentAnimation = name;
 
+            // Brief preview: play for 3s then return to idle
+            // (state machine will override if agent actually becomes active)
+            serial.send('ACTIVE');
+            setTimeout(() => {
+                if (webServer.currentAnimation === name) {
+                    serial.send('IDLE');
+                }
+            }, 3000);
+
             webServer._sendJson(res, 200, { ok: true, animation: name });
         } catch (err) {
             webServer._sendJson(res, 400, { ok: false, error: err.message });
