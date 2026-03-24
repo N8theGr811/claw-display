@@ -148,18 +148,16 @@ def generate_master_header(output_dir, frame_names):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: python png_to_rgb565.py <input_dir> <output_dir>")
-        print()
-        print("  input_dir   Directory containing frame_000.png, frame_001.png, ...")
-        print("  output_dir  Directory to write .h files into")
-        print()
-        print("Example:")
-        print("  python tools/png_to_rgb565.py assets/frames firmware/include/frames")
-        sys.exit(1)
+    import argparse
+    parser = argparse.ArgumentParser(description="Convert PNG frames to RGB565 C headers")
+    parser.add_argument("input_dir", help="Directory containing frame_000.png, frame_001.png, ...")
+    parser.add_argument("output_dir", help="Directory to write .h files into")
+    parser.add_argument("--prefix", default="", help="Prefix for C array names (e.g., 'octopus_' -> octopus_frame_000)")
+    args = parser.parse_args()
 
-    input_dir = Path(sys.argv[1])
-    output_dir = Path(sys.argv[2])
+    input_dir = Path(args.input_dir)
+    output_dir = Path(args.output_dir)
+    prefix = args.prefix
 
     # Validate input directory exists
     if not input_dir.is_dir():
@@ -177,18 +175,21 @@ def main():
         sys.exit(1)
 
     print(f"Converting {len(pngs)} frames from {input_dir} -> {output_dir}")
+    if prefix:
+        print(f"  Array name prefix: {prefix}")
     print()
 
     # Convert each frame
     frame_names = []
     for png_path in pngs:
-        frame_name = png_path.stem  # e.g., "frame_000"
-        header_path = output_dir / f"{frame_name}.h"
+        frame_name = f"{prefix}{png_path.stem}"  # e.g., "octopus_frame_000"
+        header_path = output_dir / f"{png_path.stem}.h"
         convert_frame(png_path, header_path, frame_name)
         frame_names.append(frame_name)
 
-    # Generate master header
-    generate_master_header(output_dir, frame_names)
+    # Generate master header (skip if using prefix, since main frames.h is hand-managed)
+    if not prefix:
+        generate_master_header(output_dir, frame_names)
 
     # Summary
     total_bytes = len(frame_names) * EXPECTED_WIDTH * EXPECTED_HEIGHT * 2

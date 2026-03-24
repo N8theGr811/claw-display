@@ -1,0 +1,8 @@
+# Custom partition table for Claw Display
+# Maximizes app space for animation frame storage.
+# 8MB flash total. No OTA, no SPIFFS - all space goes to the app.
+#
+# Name,   Type, SubType, Offset,   Size,    Flags
+nvs,      data, nvs,     0x9000,   0x5000,
+otadata,  data, ota,     0xe000,   0x2000,
+app0,     app,  ota_0,   0x10000,  0x7F0000,

@@ -25,7 +25,8 @@ Wants=openclaw-gateway.service
 Type=simple
 User=nathanmarkham
 WorkingDirectory=/home/nathanmarkham/claw-display
-ExecStart=/usr/bin/node src/index.js --port /dev/ttyACM0
+# Change --animation to switch (options: lobster, octopus)
+ExecStart=/usr/bin/node src/index.js --port /dev/ttyACM0 --animation octopus
 Restart=always
 RestartSec=5
 StandardOutput=journal

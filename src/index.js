@@ -42,12 +42,16 @@ const { StateMachine } = require('./state');
  * @returns {{ port: string|null, verbose: boolean, help: boolean }}
  */
 function parseArgs(args) {
-    const opts = { port: null, verbose: false, help: false };
+    const opts = { port: null, verbose: false, help: false, animation: null };
 
     for (let i = 0; i < args.length; i++) {
         switch (args[i]) {
             case '--port':
                 opts.port = args[++i] || null;
+                break;
+            case '--animation':
+            case '--anim':
+                opts.animation = args[++i] || null;
                 break;
             case '--verbose':
             case '-v':
@@ -70,10 +74,13 @@ function printHelp() {
 claw-display - Status display for OpenClaw AI agents
 
 Usage:
-  claw-display                Start the daemon
-  claw-display --port COM3    Specify serial port manually
-  claw-display --verbose      Enable debug logging (API + serial traffic)
-  claw-display --help         Show this help
+  claw-display                      Start the daemon
+  claw-display --port COM3          Specify serial port manually
+  claw-display --animation octopus  Choose animation (default: lobster)
+  claw-display --verbose            Enable debug logging (API + serial traffic)
+  claw-display --help               Show this help
+
+Available animations: lobster (default), octopus
 
 How it works:
   1. Connects to your Claw Display over USB serial
@@ -171,6 +178,12 @@ async function main() {
     }
 
     if (shuttingDown) return;
+
+    // --- Select animation if specified ---
+    if (opts.animation) {
+        console.log(`Selecting animation: ${opts.animation}`);
+        serial.send(`ANIM:${opts.animation}`);
+    }
 
     // --- Start polling ---
     poller.start();
