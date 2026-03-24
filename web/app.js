@@ -127,9 +127,18 @@ setInterval(async () => {
 // ============================================================================
 
 let currentAnimation = null;
+let flashQueue = new Set();   // animations queued for next flash
+let maxAnimations = 3;        // from server config
+let equippedAnimations = [];  // currently in firmware
 
 async function loadAnimations() {
     try {
+        // Load flash config (max slots + currently equipped)
+        const cfgRes = await fetch('/api/flash/config');
+        const cfg = await cfgRes.json();
+        maxAnimations = cfg.maxAnimations || 3;
+        equippedAnimations = cfg.equipped || [];
+
         const res = await fetch('/api/animations');
         const animations = await res.json();
         renderAnimations(animations);
@@ -143,9 +152,23 @@ function renderAnimations(animations) {
     grid.innerHTML = '';
 
     for (const anim of animations) {
+        const isActive   = anim.name === currentAnimation;
+        const isQueued   = flashQueue.has(anim.name);
+        const isEquipped = equippedAnimations.includes(anim.name);
+
         const card = document.createElement('div');
-        card.className = `animation-card${anim.name === currentAnimation ? ' selected' : ''}`;
-        card.onclick = () => selectAnimation(anim.name);
+        card.className = [
+            'animation-card',
+            isActive   ? 'selected'  : '',
+            isQueued   ? 'queued'    : '',
+            isEquipped ? 'equipped'  : '',
+        ].filter(Boolean).join(' ');
+
+        // Click card = activate on device (only if equipped in firmware)
+        card.onclick = () => {
+            if (isEquipped) selectAnimation(anim.name);
+        };
+        if (!isEquipped) card.title = 'Not in firmware — queue and flash to use';
 
         const img = document.createElement('img');
         img.src = anim.hasPreview ? `/api/animations/${anim.name}/preview` : '';
@@ -160,20 +183,64 @@ function renderAnimations(animations) {
         count.className = 'frame-count';
         count.textContent = `${anim.frameCount} frames`;
 
-        const flashBtn = document.createElement('button');
-        flashBtn.className = 'btn-flash-anim';
-        flashBtn.textContent = '⚡ Flash';
-        flashBtn.title = `Build & flash firmware with ${anim.name}`;
-        flashBtn.onclick = (e) => {
-            e.stopPropagation(); // Don't trigger selectAnimation
-            startFlash(anim.name);
-        };
+        // Badge showing equipped/queued status
+        const badge = document.createElement('div');
+        badge.className = 'anim-badge';
+        if (isQueued) {
+            badge.textContent = '📋 Queued';
+            badge.className += ' badge-queued';
+        } else if (isEquipped) {
+            badge.textContent = '✅ In firmware';
+            badge.className += ' badge-equipped';
+        }
+
+        // Toggle button: add/remove from flash queue
+        const toggleBtn = document.createElement('button');
+        if (isQueued) {
+            toggleBtn.className = 'btn-queue btn-queue-remove';
+            toggleBtn.textContent = '✕ Remove';
+            toggleBtn.onclick = (e) => { e.stopPropagation(); toggleQueue(anim.name); };
+        } else {
+            const full = flashQueue.size >= maxAnimations;
+            toggleBtn.className = 'btn-queue btn-queue-add';
+            toggleBtn.textContent = '+ Queue';
+            toggleBtn.disabled = full;
+            toggleBtn.title = full ? `Max ${maxAnimations} animations` : `Add to flash queue`;
+            toggleBtn.onclick = (e) => { e.stopPropagation(); toggleQueue(anim.name); };
+        }
 
         card.appendChild(img);
         card.appendChild(name);
         card.appendChild(count);
-        card.appendChild(flashBtn);
+        if (badge.textContent) card.appendChild(badge);
+        card.appendChild(toggleBtn);
         grid.appendChild(card);
+    }
+
+    updateFlashQueueUI();
+}
+
+function toggleQueue(name) {
+    if (flashQueue.has(name)) {
+        flashQueue.delete(name);
+    } else if (flashQueue.size < maxAnimations) {
+        flashQueue.add(name);
+    }
+    loadAnimations(); // Re-render
+}
+
+function updateFlashQueueUI() {
+    const count = flashQueue.size;
+    const counterEl = document.getElementById('flash-queue-count');
+    const flashBtn  = document.getElementById('btn-flash');
+    const listEl    = document.getElementById('flash-queue-list');
+
+    if (counterEl) counterEl.textContent = `${count} / ${maxAnimations} selected`;
+    if (flashBtn)  flashBtn.disabled = count === 0;
+    if (listEl) {
+        listEl.textContent = count > 0
+            ? `Will flash: ${[...flashQueue].join(', ')}`
+            : 'No animations queued — click "+ Queue" on up to 3 cards below';
     }
 }
 
@@ -188,7 +255,7 @@ async function selectAnimation(name) {
         if (result.ok) {
             currentAnimation = name;
             document.getElementById('device-animation').textContent = name;
-            loadAnimations(); // Re-render to update selection highlight
+            loadAnimations();
         }
     } catch (e) {
         console.error('Failed to select animation:', e);
@@ -199,31 +266,33 @@ async function selectAnimation(name) {
 // 4. Flash Firmware
 // ============================================================================
 
-document.getElementById('btn-flash').addEventListener('click', () => startFlash(null));
+document.getElementById('btn-flash').addEventListener('click', startFlash);
 
-async function startFlash(animationName) {
-    const label = animationName ? `Flash ${animationName} to device?` : 'Flash firmware to the device?';
-    if (!confirm(`${label} The display will briefly disconnect.`)) return;
+async function startFlash() {
+    const selected = [...flashQueue];
+    if (selected.length === 0) return;
 
-    const prefix = animationName ? `Preparing ${animationName}...\n` : 'Starting flash...\n';
-    document.getElementById('flash-output').textContent = prefix;
+    if (!confirm(`Flash ${selected.length} animation(s) to firmware?\n\n${selected.join(', ')}\n\nThe display will briefly disconnect.`)) return;
+
+    document.getElementById('flash-output').textContent = `Queuing: ${selected.join(', ')}\n`;
     showModal('flash-modal');
     document.getElementById('btn-flash').disabled = true;
 
     try {
-        const body = animationName ? JSON.stringify({ animation: animationName }) : undefined;
         const res = await fetch('/api/flash', {
             method: 'POST',
-            headers: body ? { 'Content-Type': 'application/json' } : {},
-            body,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ animations: selected }),
         });
         const data = await res.json();
         if (data.error) {
             document.getElementById('flash-output').textContent += `Error: ${data.error}\n`;
+            document.getElementById('btn-flash').disabled = false;
         }
         // Progress updates come via WebSocket
     } catch (e) {
         document.getElementById('flash-output').textContent += `Error: ${e.message}\n`;
+        document.getElementById('btn-flash').disabled = false;
     }
 }
 
@@ -233,7 +302,14 @@ function updateFlashProgress(data) {
         output.textContent += data.output;
         output.scrollTop = output.scrollHeight;
     }
-    if (data.status === 'done' || data.status === 'error') {
+    if (data.status === 'done') {
+        document.getElementById('btn-flash').disabled = false;
+        // Update equipped list and clear queue
+        equippedAnimations = [...flashQueue];
+        flashQueue.clear();
+        loadAnimations();
+    }
+    if (data.status === 'error') {
         document.getElementById('btn-flash').disabled = false;
     }
 }

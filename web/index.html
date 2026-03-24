@@ -42,6 +42,10 @@
         <!-- Animation Browser -->
         <section id="animations" class="card">
             <h2>Animations</h2>
+            <div id="flash-queue-bar">
+                <span id="flash-queue-count">0 / 3 selected</span>
+                <span id="flash-queue-list">No animations queued — click "+ Queue" on up to 3 cards below</span>
+            </div>
             <div id="animation-grid" class="animation-grid">
                 <!-- Populated by JavaScript -->
             </div>
@@ -51,7 +55,7 @@
         <section id="actions" class="card">
             <h2>Actions</h2>
             <div class="action-buttons">
-                <button id="btn-flash" class="btn">Flash Firmware</button>
+                <button id="btn-flash" class="btn" disabled>⚡ Flash Selected</button>
                 <button id="btn-upload" class="btn">Upload Animation</button>
             </div>
         </section>

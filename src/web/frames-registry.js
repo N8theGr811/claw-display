@@ -8,14 +8,14 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { execSync, spawn } = require('child_process');
+const { execSync } = require('child_process');
 
 /**
  * Convert PNG frames to RGB565 header files using png_to_rgb565.py.
- * Returns the frame count. Throws on error.
+ * No-op if headers already exist. Returns frame count.
  *
  * @param {string} projectRoot
- * @param {string} name - Animation name (must match assets/frames/<name>/)
+ * @param {string} name
  * @param {function} broadcast - (msg) => void for progress output
  * @returns {number} frameCount
  */
@@ -45,69 +45,14 @@ function convertFrames(projectRoot, name, broadcast) {
 }
 
 /**
- * Add an animation to frames.h if not already present.
- * No-op if the animation is already registered.
- *
+ * Get the frame count for an animation whose headers already exist.
  * @param {string} projectRoot
  * @param {string} name
- * @param {number} frameCount
+ * @returns {number}
  */
-function registerAnimation(projectRoot, name, frameCount) {
-    const framesHPath  = path.join(projectRoot, 'firmware', 'include', 'frames', 'frames.h');
-    const prefix       = `${name.replace(/[^a-z0-9]/gi, '_')}_`;
-    const constName    = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-
-    let content = fs.readFileSync(framesHPath, 'utf8');
-
-    if (content.includes(`"${name}"`)) {
-        return; // Already registered
-    }
-
-    const includes = [];
-    for (let i = 0; i < frameCount; i++) {
-        includes.push(`#include "${name}/frame_${String(i).padStart(3, '0')}.h"`);
-    }
-
-    const frameRefs = [];
-    for (let i = 0; i < frameCount; i++) {
-        frameRefs.push(`${prefix}frame_${String(i).padStart(3, '0')}`);
-    }
-
-    const newSection = `
-// ============================================================================
-// Animation Set: "${name}" (${frameCount} frames)
-// Generated from: assets/frames/${name}/ with --prefix ${prefix}
-// ============================================================================
-${includes.join('\n')}
-
-#define ${constName}_FRAME_COUNT ${frameCount}
-
-const uint16_t* const ${constName}_FRAMES[] PROGMEM = {
-    ${frameRefs.join(', ')},
-};
-`;
-
-    const registryMarker = '// Animation Registry';
-    const markerIndex = content.indexOf(registryMarker);
-    if (markerIndex === -1) throw new Error('Could not find "// Animation Registry" marker in frames.h');
-
-    const beforeMarker = content.lastIndexOf('// ====', markerIndex);
-    content = content.slice(0, beforeMarker) + newSection + '\n' + content.slice(beforeMarker);
-
-    const countMatch = content.match(/#define ANIMATION_COUNT (\d+)/);
-    if (countMatch) {
-        const oldCount = parseInt(countMatch[1], 10);
-        content = content.replace(
-            `#define ANIMATION_COUNT ${oldCount}`,
-            `#define ANIMATION_COUNT ${oldCount + 1}`
-        );
-    }
-
-    const setsClosing = content.lastIndexOf('};');
-    const newEntry = `    { "${name}", ${constName}_FRAMES, ${constName}_FRAME_COUNT },\n`;
-    content = content.slice(0, setsClosing) + newEntry + content.slice(setsClosing);
-
-    fs.writeFileSync(framesHPath, content, 'utf8');
+function getFrameCount(projectRoot, name) {
+    const dir = path.join(projectRoot, 'firmware', 'include', 'frames', name);
+    return fs.readdirSync(dir).filter(f => f.match(/^frame_\d+\.h$/)).length;
 }
 
 /**
@@ -133,4 +78,115 @@ function isRegistered(projectRoot, name) {
     return content.includes(`"${name}"`);
 }
 
-module.exports = { convertFrames, registerAnimation, headersExist, isRegistered };
+/**
+ * Rebuild frames.h from scratch with exactly the given animation names.
+ * Converts any that don't have headers yet. Writes the full file.
+ *
+ * @param {string} projectRoot
+ * @param {string[]} names - Ordered list of animation names to include
+ * @param {function} broadcast - (msg) => void for progress output
+ */
+function rebuildFramesH(projectRoot, names, broadcast) {
+    const framesHPath = path.join(projectRoot, 'firmware', 'include', 'frames', 'frames.h');
+
+    // Ensure headers exist for all animations
+    for (const name of names) {
+        if (!headersExist(projectRoot, name)) {
+            convertFrames(projectRoot, name, broadcast);
+        } else {
+            broadcast(`${name}: headers ready`);
+        }
+    }
+
+    broadcast('Rebuilding frames.h...');
+
+    // Collect metadata for each animation
+    const animations = names.map(name => {
+        const prefix    = `${name.replace(/[^a-z0-9]/gi, '_')}_`;
+        const constName = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+        const frameCount = getFrameCount(projectRoot, name);
+        return { name, prefix, constName, frameCount };
+    });
+
+    // Build the includes + arrays block for each animation
+    const animSections = animations.map(({ name, prefix, constName, frameCount }) => {
+        const includes = [];
+        for (let i = 0; i < frameCount; i++) {
+            includes.push(`#include "${name}/frame_${String(i).padStart(3, '0')}.h"`);
+        }
+        const frameRefs = [];
+        for (let i = 0; i < frameCount; i++) {
+            frameRefs.push(`${prefix}frame_${String(i).padStart(3, '0')}`);
+        }
+        return `
+// ============================================================================
+// Animation Set: "${name}" (${frameCount} frames)
+// Generated from: assets/frames/${name}/ with --prefix ${prefix}
+// ============================================================================
+${includes.join('\n')}
+
+#define ${constName}_FRAME_COUNT ${frameCount}
+
+const uint16_t* const ${constName}_FRAMES[] PROGMEM = {
+    ${frameRefs.join(', ')},
+};`;
+    }).join('\n');
+
+    // Build the registry block
+    const registryEntries = animations
+        .map(({ name, constName }) =>
+            `    { "${name}", ${constName}_FRAMES, ${constName}_FRAME_COUNT },`)
+        .join('\n');
+
+    const content = `/**
+ * frames.h - Animation Registry for Claw Display
+ * ================================================
+ *
+ * Central registry of all animation sets available on this device.
+ * Each set is a named collection of RGB565 frame arrays stored in flash.
+ *
+ * ADDING NEW ANIMATIONS:
+ * ----------------------
+ * 1. Create frame PNGs in assets/frames/<name>/
+ * 2. Run: python tools/png_to_rgb565.py assets/frames/<name> firmware/include/frames/<name> --prefix <short>_
+ * 3. Include the generated frame headers below
+ * 4. Add a FRAMES array and entry to ANIMATION_SETS
+ * 5. Increment ANIMATION_COUNT
+ * 6. Rebuild and flash: pio run --target upload
+ *
+ * The daemon selects animations via "ANIM:<name>\\n" serial command.
+ *
+ * MEMORY BUDGET:
+ * Each 240x240 RGB565 frame = 112.5 KB flash.
+ * ESP32-S3 app partition: ~7.94 MB. Max ~3 animations (~70 frames).
+ *
+ * Currently equipped (${names.length} animations):
+${names.map(n => ` *   - ${n}`).join('\n')}
+ */
+
+#pragma once
+#include <Arduino.h>
+${animSections}
+
+// ============================================================================
+// Animation Registry
+// ============================================================================
+
+struct AnimationSet {
+    const char* name;
+    const uint16_t* const* frames;
+    uint16_t frameCount;
+};
+
+#define ANIMATION_COUNT ${animations.length}
+
+const AnimationSet ANIMATION_SETS[ANIMATION_COUNT] = {
+${registryEntries}
+};
+`;
+
+    fs.writeFileSync(framesHPath, content, 'utf8');
+    broadcast(`frames.h rebuilt with ${names.length} animations: ${names.join(', ')}`);
+}
+
+module.exports = { convertFrames, rebuildFramesH, headersExist, isRegistered, getFrameCount };

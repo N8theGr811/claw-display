@@ -7,20 +7,25 @@
  *   GET  /api/flash/:jobId   - Get flash job status
  *
  * Flash sequence:
- *   1. Disconnect serial (only one process can hold the port)
- *   2. Run PlatformIO upload command
- *   3. Stream output via WebSocket
- *   4. Reconnect serial on completion
+ *   1. Accept animations[] from request body
+ *   2. Convert any un-converted animations (PNG -> RGB565 headers)
+ *   3. Rebuild frames.h with exactly the selected set
+ *   4. Disconnect serial (only one process can hold the port)
+ *   5. Run PlatformIO upload
+ *   6. Stream output via WebSocket
+ *   7. Reconnect serial on completion
  */
 
 const { spawn } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
 const { findPioCommand } = require('../pio');
-const { convertFrames, registerAnimation, headersExist, isRegistered } = require('../frames-registry');
+const { rebuildFramesH } = require('../frames-registry');
 
 // Active flash jobs
 const jobs = {};
+
+const MAX_ANIMATIONS = 3;
 
 module.exports = function({ webServer, serial }) {
 
@@ -38,17 +43,29 @@ module.exports = function({ webServer, serial }) {
         const pio = findPioCommand();
         if (!pio) {
             webServer._sendJson(res, 500, {
-                error: 'PlatformIO not found. Install with: pipx install platformio (Linux) or pip install platformio (Windows/Mac)'
+                error: 'PlatformIO not found. Install with: pipx install platformio',
             });
             return;
         }
 
-        // Optional: animation to prepare before flashing
-        let animationName = null;
+        // Parse animation selection from body
+        let animations = [];
         try {
             const body = await webServer.readJson(req).catch(() => ({}));
-            animationName = body.animation || null;
+            animations = Array.isArray(body.animations) ? body.animations : [];
         } catch (_) {}
+
+        if (animations.length === 0) {
+            webServer._sendJson(res, 400, { error: 'No animations selected. Pick 1–3 animations to flash.' });
+            return;
+        }
+
+        if (animations.length > MAX_ANIMATIONS) {
+            webServer._sendJson(res, 400, {
+                error: `Too many animations. Max ${MAX_ANIMATIONS}, got ${animations.length}.`,
+            });
+            return;
+        }
 
         const job = { id: jobId, status: 'running', progress: 0, output: '' };
         jobs[jobId] = job;
@@ -58,33 +75,20 @@ module.exports = function({ webServer, serial }) {
         const broadcast = (msg) => {
             job.output += msg + '\n';
             if (webServer.wsBroadcaster) {
-                webServer.wsBroadcaster.broadcast('flash_progress', { jobId, status: 'running', output: msg + '\n' });
+                webServer.wsBroadcaster.broadcast('flash_progress', {
+                    jobId, status: 'running', output: msg + '\n',
+                });
             }
         };
 
-        // Run flash in background
         (async () => {
             try {
-                // --- Step 1: Prepare animation (convert + register) if requested ---
-                if (animationName) {
-                    broadcast(`Preparing animation: ${animationName}`);
+                // --- Step 1: Convert + rebuild frames.h ---
+                broadcast(`Selected animations: ${animations.join(', ')}`);
+                rebuildFramesH(webServer.projectRoot, animations, broadcast);
 
-                    if (!headersExist(webServer.projectRoot, animationName)) {
-                        const frameCount = convertFrames(webServer.projectRoot, animationName, broadcast);
-                        registerAnimation(webServer.projectRoot, animationName, frameCount);
-                        broadcast(`Added ${animationName} to firmware (${frameCount} frames)`);
-                    } else if (!isRegistered(webServer.projectRoot, animationName)) {
-                        const dir = require('path').join(webServer.projectRoot, 'firmware', 'include', 'frames', animationName);
-                        const frameCount = require('fs').readdirSync(dir).filter(f => f.match(/^frame_\d+\.h$/)).length;
-                        registerAnimation(webServer.projectRoot, animationName, frameCount);
-                        broadcast(`Registered ${animationName} in firmware (${frameCount} frames)`);
-                    } else {
-                        broadcast(`${animationName} already in firmware — skipping conversion`);
-                    }
-                }
-
-                // Disconnect serial to free the port
-                console.log('[flash] Disconnecting serial for flash...');
+                // --- Step 2: Disconnect serial ---
+                broadcast('Disconnecting serial for flash...');
                 serial._closing = true;
                 if (serial.port && serial.port.isOpen) {
                     await new Promise((resolve, reject) => {
@@ -93,17 +97,13 @@ module.exports = function({ webServer, serial }) {
                     serial.connected = false;
                     serial.connectedPort = null;
                 }
-                // Extra delay for OS to fully release the port
                 await new Promise(r => setTimeout(r, 1000));
 
-                // Build flash command using detected PlatformIO path
+                // --- Step 3: Build + flash ---
                 const runArgs = [...pio.prefix, 'run', '--target', 'upload', '--upload-port', port];
-                console.log(`[flash] Running: ${pio.cmd} ${runArgs.join(' ')}`);
+                broadcast(`Running: ${pio.cmd} ${runArgs.join(' ')}`);
 
-                const proc = spawn(pio.cmd, runArgs, {
-                    cwd: firmwareDir,
-                    shell: true,
-                });
+                const proc = spawn(pio.cmd, runArgs, { cwd: firmwareDir, shell: true });
 
                 proc.stdout.on('data', (data) => {
                     const text = data.toString();
@@ -125,15 +125,14 @@ module.exports = function({ webServer, serial }) {
                     }
                 });
 
-                const exitCode = await new Promise(resolve => {
-                    proc.on('close', resolve);
-                });
+                const exitCode = await new Promise(resolve => proc.on('close', resolve));
 
                 job.status = exitCode === 0 ? 'done' : 'error';
-                const msg = exitCode === 0 ? 'Flash complete!' : `Flash failed (exit code ${exitCode})`;
+                const msg = exitCode === 0
+                    ? `Flash complete! Equipped: ${animations.join(', ')}`
+                    : `Flash failed (exit code ${exitCode})`;
                 job.output += `\n${msg}\n`;
 
-                // Clean up job after 60 seconds to prevent memory leak
                 setTimeout(() => delete jobs[jobId], 60000);
 
                 if (webServer.wsBroadcaster) {
@@ -142,17 +141,24 @@ module.exports = function({ webServer, serial }) {
                     });
                 }
 
-                // Reconnect serial
-                console.log('[flash] Reconnecting serial...');
+                // Store equipped set on server for status reporting
+                if (exitCode === 0) {
+                    webServer.equippedAnimations = [...animations];
+                }
+
+                // --- Step 4: Reconnect serial ---
+                broadcast('Reconnecting serial...');
                 serial._closing = false;
                 await new Promise(r => setTimeout(r, 2000));
                 try {
                     await serial.connect();
-                    if (webServer.currentAnimation) {
-                        serial.send(`ANIM:${webServer.currentAnimation}`);
+                    // Re-select the first animation after flash
+                    if (animations.length > 0) {
+                        serial.send(`ANIM:${animations[0]}`);
+                        webServer.currentAnimation = animations[0];
                     }
                 } catch (err) {
-                    console.error(`[flash] Reconnect failed: ${err.message}`);
+                    broadcast(`Reconnect failed: ${err.message}`);
                 }
             } catch (err) {
                 job.status = 'error';
@@ -173,5 +179,13 @@ module.exports = function({ webServer, serial }) {
             return;
         }
         webServer._sendJson(res, 200, job);
+    });
+
+    // Return currently equipped animations and flash limit
+    webServer.route('GET', '/api/flash/config', async (req, res) => {
+        webServer._sendJson(res, 200, {
+            maxAnimations: MAX_ANIMATIONS,
+            equipped: webServer.equippedAnimations || [],
+        });
     });
 };
