@@ -222,7 +222,7 @@ input[type="file"] {
     color: var(--text-dim);
 }
 
-.hidden { display: none; }
+.hidden { display: none !important; }
 
 /* Log Viewer */
 .log-viewer {
