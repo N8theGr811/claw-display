@@ -9,14 +9,17 @@
  *
  * State transitions:
  *   IDLE ---[isActive=true]---> ACTIVE
- *   ACTIVE ---[isActive=false, debounce expired]---> IDLE
- *   ACTIVE ---[isActive=false, debounce NOT expired]---> ACTIVE (held)
+ *   ACTIVE ---[isActive=false, debounce expired, min-hold expired]---> IDLE
+ *   ACTIVE ---[isActive=false, within debounce OR min-hold]---> ACTIVE (held)
  *
- * Usage:
- *   const state = new StateMachine();
- *   state.onStateChange = (newState) => serial.send(newState);
- *   state.update(true);   // agent is active
- *   state.update(false);  // agent idle, but state stays ACTIVE for 5s
+ * Two timers work together:
+ *   DEBOUNCE_MS    - How long after the last active poll signal to stay on.
+ *                    Prevents flicker between polls.
+ *   MIN_ACTIVE_MS  - Minimum time to stay ACTIVE once triggered.
+ *                    Prevents the display cutting out mid-task when OpenClaw
+ *                    only reports token counts at response completion (not
+ *                    continuously during generation). Without this, long
+ *                    responses cause the display to go idle mid-task.
  *
  * The onStateChange callback only fires on actual transitions, not
  * on every update() call. This means the serial port only gets a
@@ -25,10 +28,12 @@
 
 const EventEmitter = require('events');
 
-// How long to keep the display ACTIVE after the last active poll.
-// Prevents flicker from short tasks. 3 seconds keeps it responsive
-// while avoiding rapid on/off toggling.
-const DEBOUNCE_MS = 3000;
+// How long to stay ACTIVE after the last poll that returned active.
+const DEBOUNCE_MS = 5000;
+
+// Minimum time to stay ACTIVE once triggered, regardless of poll results.
+// Set to cover typical response generation times.
+const MIN_ACTIVE_MS = 25000;
 
 class StateMachine extends EventEmitter {
     constructor() {
@@ -39,6 +44,9 @@ class StateMachine extends EventEmitter {
 
         /** @type {number} Timestamp of the last poll that returned active */
         this.lastActiveTime = 0;
+
+        /** @type {number} Timestamp of when we last transitioned to ACTIVE */
+        this.activatedAt = 0;
 
         /**
          * Callback fired on state transitions.
@@ -57,25 +65,31 @@ class StateMachine extends EventEmitter {
         const now = Date.now();
 
         if (isActive) {
-            // Agent is active: record the time and ensure state is ACTIVE
             this.lastActiveTime = now;
         }
 
-        // Determine what the state should be
         let targetState;
         if (isActive) {
             targetState = 'ACTIVE';
         } else if (now - this.lastActiveTime < DEBOUNCE_MS) {
-            // Agent went idle, but we're still within the debounce window.
-            // Keep the display on to prevent flicker.
+            // Within debounce window — hold on
+            targetState = 'ACTIVE';
+        } else if (this.activatedAt > 0 && now - this.activatedAt < MIN_ACTIVE_MS) {
+            // Within minimum active hold — keep on even if no recent poll signals
             targetState = 'ACTIVE';
         } else {
             targetState = 'IDLE';
         }
 
-        // Fire callback and event only on actual transitions
         if (targetState !== this.currentState) {
             this.currentState = targetState;
+
+            if (targetState === 'ACTIVE') {
+                this.activatedAt = now; // Record activation time
+            } else {
+                this.activatedAt = 0;  // Reset on idle
+            }
+
             this.emit('state_change', { state: targetState });
             if (this.onStateChange) {
                 this.onStateChange(targetState);
@@ -94,4 +108,4 @@ class StateMachine extends EventEmitter {
     }
 }
 
-module.exports = { StateMachine, DEBOUNCE_MS };
+module.exports = { StateMachine, DEBOUNCE_MS, MIN_ACTIVE_MS };
