@@ -277,7 +277,7 @@ def _rotate_sprite(sprite_img, degrees):
 # Frame Generation
 # =============================================================================
 
-def generate_frames(input_path, output_dir, num_frames, motion_type, preview):
+def generate_frames(input_path, output_dir, num_frames, motion_type, preview, scale_pct=75):
     """Generate animation frames using the specified motion type."""
     print(f"Loading: {input_path}")
     img = Image.open(input_path)
@@ -285,8 +285,8 @@ def generate_frames(input_path, output_dir, num_frames, motion_type, preview):
     print("Removing background...")
     sprite = remove_background(img)
 
-    # Scale to 75% of display (leaves room for movement)
-    target_size = int(DISPLAY_SIZE * 0.75)
+    # Scale sprite to given percentage of display size
+    target_size = int(DISPLAY_SIZE * scale_pct / 100)
     scale = target_size / max(sprite.width, sprite.height)
     new_w = int(sprite.width * scale)
     new_h = int(sprite.height * scale)
@@ -346,6 +346,8 @@ def main():
                         help="Motion type (default: bob)")
     parser.add_argument("--frames", type=int, default=DEFAULT_FRAME_COUNT,
                         help=f"Frame count (default: {DEFAULT_FRAME_COUNT})")
+    parser.add_argument("--scale", type=int, default=75,
+                        help="Sprite size as %% of display (default: 75, max: 95)")
     parser.add_argument("--preview", action="store_true",
                         help="Generate animated GIF preview")
     args = parser.parse_args()
@@ -354,7 +356,7 @@ def main():
         print(f"Error: Input file not found: {args.input}")
         sys.exit(1)
 
-    generate_frames(args.input, args.output, args.frames, args.motion, args.preview)
+    generate_frames(args.input, args.output, args.frames, args.motion, args.preview, args.scale)
 
 
 if __name__ == "__main__":
