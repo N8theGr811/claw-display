@@ -210,52 +210,17 @@ def motion_robot(sprite_array, frame_i, total, **kw):
 
 
 def motion_ufo(sprite_array, frame_i, total, **kw):
-    """UFO alien: float + eye pulse + turning left-right."""
-    h, w, c = sprite_array.shape
+    """UFO alien: smooth floating sway + gentle turning."""
     phase = (frame_i / total) * 2 * math.pi
 
-    # Floating sway (slow, hovering feel)
-    x_off = int(8 * math.sin(phase))
-    y_off = int(4 * math.sin(phase * 0.5))
+    # Smooth figure-8 floating path (two different frequencies for x and y)
+    x_off = int(12 * math.sin(phase))
+    y_off = int(5 * math.sin(phase * 2))
 
-    # Eye/head pulse: scale the top 40% of the sprite slightly
-    # This creates a subtle "breathing" or "eye widening" effect
-    result = sprite_array.copy()
-    head_end = int(h * 0.45)
-    pulse = 1.0 + 0.06 * math.sin(phase * 2)  # scale between 0.94 and 1.06
+    # Gentle tilt as it moves left-right (like banking into a turn)
+    rotation = 4 * math.sin(phase)
 
-    if abs(pulse - 1.0) > 0.01:
-        head_section = Image.fromarray(sprite_array[:head_end, :, :])
-        new_w = int(w * pulse)
-        new_h = int(head_end * pulse)
-        scaled = head_section.resize((new_w, new_h), Image.NEAREST)
-        scaled_arr = np.array(scaled)
-
-        # Center the scaled section back into result
-        paste_x = (w - new_w) // 2
-        paste_y = (head_end - new_h) // 2
-
-        # Clear the head region first
-        result[:head_end, :, :] = 0
-
-        # Paste scaled section (clipped to bounds)
-        src_y_start = max(0, -paste_y)
-        src_x_start = max(0, -paste_x)
-        dst_y_start = max(0, paste_y)
-        dst_x_start = max(0, paste_x)
-        copy_h = min(new_h - src_y_start, head_end - dst_y_start)
-        copy_w = min(new_w - src_x_start, w - dst_x_start)
-
-        if copy_h > 0 and copy_w > 0:
-            result[dst_y_start:dst_y_start+copy_h,
-                   dst_x_start:dst_x_start+copy_w, :] = \
-                scaled_arr[src_y_start:src_y_start+copy_h,
-                           src_x_start:src_x_start+copy_w, :]
-
-    # Slight rotation for turning left-right
-    rotation = 5 * math.sin(phase)
-
-    return x_off, y_off, rotation, result
+    return x_off, y_off, rotation, sprite_array
 
 
 MOTION_MAP = {
