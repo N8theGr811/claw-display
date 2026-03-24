@@ -18,6 +18,7 @@
 
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const { findPioCommand } = require('../pio');
 const { rebuildFramesH } = require('../frames-registry');
@@ -27,9 +28,37 @@ const jobs = {};
 
 const MAX_ANIMATIONS = 3;
 
+function getStatePath(projectRoot) {
+    return path.join(projectRoot, '.flash-state.json');
+}
+
+function loadEquipped(projectRoot) {
+    try {
+        const data = JSON.parse(fs.readFileSync(getStatePath(projectRoot), 'utf8'));
+        return Array.isArray(data.equipped) ? data.equipped : [];
+    } catch (_) {
+        // Fallback: read from frames.h registry
+        try {
+            const framesH = fs.readFileSync(
+                path.join(projectRoot, 'firmware', 'include', 'frames', 'frames.h'), 'utf8');
+            const matches = [...framesH.matchAll(/\{ "([^"]+)",/g)];
+            return matches.map(m => m[1]);
+        } catch (_2) { return []; }
+    }
+}
+
+function saveEquipped(projectRoot, equipped) {
+    fs.writeFileSync(getStatePath(projectRoot), JSON.stringify({ equipped }, null, 2));
+}
+
 module.exports = function({ webServer, serial }) {
 
     const firmwareDir = path.join(webServer.projectRoot, 'firmware');
+
+    // Load persisted equipped list on startup
+    if (!webServer.equippedAnimations || webServer.equippedAnimations.length === 0) {
+        webServer.equippedAnimations = loadEquipped(webServer.projectRoot);
+    }
 
     webServer.route('POST', '/api/flash', async (req, res) => {
         const jobId = crypto.randomBytes(4).toString('hex');
@@ -141,9 +170,10 @@ module.exports = function({ webServer, serial }) {
                     });
                 }
 
-                // Store equipped set on server for status reporting
+                // Persist equipped set
                 if (exitCode === 0) {
                     webServer.equippedAnimations = [...animations];
+                    saveEquipped(webServer.projectRoot, webServer.equippedAnimations);
                 }
 
                 // --- Step 4: Reconnect serial ---
@@ -172,6 +202,14 @@ module.exports = function({ webServer, serial }) {
         })();
     });
 
+    // Must be registered BEFORE /:jobId to avoid "config" matching as a jobId
+    webServer.route('GET', '/api/flash/config', async (req, res) => {
+        webServer._sendJson(res, 200, {
+            maxAnimations: MAX_ANIMATIONS,
+            equipped: webServer.equippedAnimations || [],
+        });
+    });
+
     webServer.route('GET', '/api/flash/:jobId', async (req, res, params) => {
         const job = jobs[params.jobId];
         if (!job) {
@@ -179,13 +217,5 @@ module.exports = function({ webServer, serial }) {
             return;
         }
         webServer._sendJson(res, 200, job);
-    });
-
-    // Return currently equipped animations and flash limit
-    webServer.route('GET', '/api/flash/config', async (req, res) => {
-        webServer._sendJson(res, 200, {
-            maxAnimations: MAX_ANIMATIONS,
-            equipped: webServer.equippedAnimations || [],
-        });
     });
 };
