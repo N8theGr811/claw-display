@@ -25,6 +25,7 @@ Wants=openclaw-gateway.service
 Type=simple
 User=nathanmarkham
 WorkingDirectory=/home/nathanmarkham/claw-display
+Environment=PATH=/home/nathanmarkham/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/bin/node src/index.js --port /dev/ttyACM0
 Restart=always
 RestartSec=5
