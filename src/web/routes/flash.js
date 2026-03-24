@@ -17,6 +17,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const crypto = require('crypto');
 const { findPioCommand } = require('../pio');
+const { convertFrames, registerAnimation, headersExist, isRegistered } = require('../frames-registry');
 
 // Active flash jobs
 const jobs = {};
@@ -42,14 +43,46 @@ module.exports = function({ webServer, serial }) {
             return;
         }
 
+        // Optional: animation to prepare before flashing
+        let animationName = null;
+        try {
+            const body = await webServer.readJson(req).catch(() => ({}));
+            animationName = body.animation || null;
+        } catch (_) {}
+
         const job = { id: jobId, status: 'running', progress: 0, output: '' };
         jobs[jobId] = job;
 
         webServer._sendJson(res, 200, { jobId });
 
+        const broadcast = (msg) => {
+            job.output += msg + '\n';
+            if (webServer.wsBroadcaster) {
+                webServer.wsBroadcaster.broadcast('flash_progress', { jobId, status: 'running', output: msg + '\n' });
+            }
+        };
+
         // Run flash in background
         (async () => {
             try {
+                // --- Step 1: Prepare animation (convert + register) if requested ---
+                if (animationName) {
+                    broadcast(`Preparing animation: ${animationName}`);
+
+                    if (!headersExist(webServer.projectRoot, animationName)) {
+                        const frameCount = convertFrames(webServer.projectRoot, animationName, broadcast);
+                        registerAnimation(webServer.projectRoot, animationName, frameCount);
+                        broadcast(`Added ${animationName} to firmware (${frameCount} frames)`);
+                    } else if (!isRegistered(webServer.projectRoot, animationName)) {
+                        const dir = require('path').join(webServer.projectRoot, 'firmware', 'include', 'frames', animationName);
+                        const frameCount = require('fs').readdirSync(dir).filter(f => f.match(/^frame_\d+\.h$/)).length;
+                        registerAnimation(webServer.projectRoot, animationName, frameCount);
+                        broadcast(`Registered ${animationName} in firmware (${frameCount} frames)`);
+                    } else {
+                        broadcast(`${animationName} already in firmware — skipping conversion`);
+                    }
+                }
+
                 // Disconnect serial to free the port
                 console.log('[flash] Disconnecting serial for flash...');
                 serial._closing = true;

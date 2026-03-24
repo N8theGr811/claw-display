@@ -158,6 +158,24 @@ main {
     color: var(--text-dim);
 }
 
+.animation-card .btn-flash-anim {
+    margin-top: 6px;
+    padding: 4px 10px;
+    font-size: 0.72rem;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    width: 100%;
+}
+
+.animation-card .btn-flash-anim:hover {
+    background: var(--accent);
+    color: white;
+}
+
 /* Buttons */
 .btn {
     background: var(--accent);
