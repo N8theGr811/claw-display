@@ -1,0 +1,291 @@
+/* Claw Display Dashboard - Dark Theme */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg: #0f1117;
+    --bg-card: #1a1d27;
+    --bg-input: #252833;
+    --text: #e0e0e0;
+    --text-dim: #888;
+    --accent: #4f8cff;
+    --accent-hover: #6ba0ff;
+    --success: #34d058;
+    --danger: #f85149;
+    --warning: #d29922;
+    --border: #2d3040;
+    --radius: 8px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+}
+
+/* Header */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+}
+
+header h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+#connection-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.dot.connected { background: var(--success); }
+.dot.disconnected { background: var(--danger); }
+
+/* Main Layout */
+main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Cards */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+}
+
+.card h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Status Grid */
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 16px;
+}
+
+.status-item .label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.status-item .value {
+    display: block;
+    font-size: 1.125rem;
+    font-weight: 500;
+    margin-top: 4px;
+}
+
+.value.active { color: var(--success); }
+.value.idle { color: var(--text-dim); }
+
+/* Animation Grid */
+.animation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 16px;
+}
+
+.animation-card {
+    background: var(--bg-input);
+    border: 2px solid transparent;
+    border-radius: var(--radius);
+    padding: 12px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.2s;
+}
+
+.animation-card:hover {
+    border-color: var(--accent);
+}
+
+.animation-card.selected {
+    border-color: var(--success);
+}
+
+.animation-card img {
+    width: 100%;
+    max-width: 120px;
+    height: 120px;
+    object-fit: contain;
+    border-radius: 50%;
+    background: #000;
+}
+
+.animation-card .name {
+    margin-top: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.animation-card .frame-count {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+}
+
+/* Buttons */
+.btn {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn:hover { background: var(--accent-hover); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-small { padding: 6px 12px; font-size: 0.8rem; }
+
+.action-buttons {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* Forms */
+.form-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.form-row label {
+    min-width: 140px;
+    font-size: 0.875rem;
+    color: var(--text-dim);
+}
+
+select, input[type="number"], input[type="text"] {
+    background: var(--bg-input);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 0.875rem;
+}
+
+input[type="file"] {
+    color: var(--text);
+    font-size: 0.875rem;
+}
+
+/* Collapsible Sections */
+.collapsible-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.toggle-icon {
+    font-size: 1.25rem;
+    color: var(--text-dim);
+}
+
+.hidden { display: none; }
+
+/* Log Viewer */
+.log-viewer {
+    background: #000;
+    border-radius: 4px;
+    padding: 12px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Mono', monospace;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.log-line { color: var(--text-dim); }
+.log-line.warn { color: var(--warning); }
+.log-line.error { color: var(--danger); }
+
+/* Modals */
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-content h2 {
+    margin-bottom: 16px;
+}
+
+.terminal-output {
+    background: #000;
+    border-radius: 4px;
+    padding: 12px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    main { padding: 12px; }
+    .card { padding: 16px; }
+    .form-row { flex-direction: column; align-items: flex-start; }
+    .form-row label { min-width: auto; }
+    .status-grid { grid-template-columns: repeat(2, 1fr); }
+}

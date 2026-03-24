@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claw Display</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Claw Display</h1>
+        <div id="connection-status">
+            <span id="status-dot" class="dot disconnected"></span>
+            <span id="status-text">Disconnected</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Device Status -->
+        <section id="device-status" class="card">
+            <h2>Device</h2>
+            <div class="status-grid">
+                <div class="status-item">
+                    <span class="label">State</span>
+                    <span id="device-state" class="value">IDLE</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Animation</span>
+                    <span id="device-animation" class="value">--</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Port</span>
+                    <span id="device-port" class="value">--</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Uptime</span>
+                    <span id="device-uptime" class="value">--</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Animation Browser -->
+        <section id="animations" class="card">
+            <h2>Animations</h2>
+            <div id="animation-grid" class="animation-grid">
+                <!-- Populated by JavaScript -->
+            </div>
+        </section>
+
+        <!-- Actions -->
+        <section id="actions" class="card">
+            <h2>Actions</h2>
+            <div class="action-buttons">
+                <button id="btn-flash" class="btn">Flash Firmware</button>
+                <button id="btn-upload" class="btn">Upload Animation</button>
+            </div>
+        </section>
+
+        <!-- Logs -->
+        <section id="logs-section" class="card collapsible">
+            <h2 class="collapsible-header" onclick="toggleSection('logs-content')">
+                Logs <span class="toggle-icon">+</span>
+            </h2>
+            <div id="logs-content" class="collapsible-content hidden">
+                <div id="log-viewer" class="log-viewer"></div>
+            </div>
+        </section>
+
+        <!-- Settings -->
+        <section id="settings-section" class="card collapsible">
+            <h2 class="collapsible-header" onclick="toggleSection('settings-content')">
+                Settings <span class="toggle-icon">+</span>
+            </h2>
+            <div id="settings-content" class="collapsible-content hidden">
+                <div class="settings-form">
+                    <div class="form-row">
+                        <label for="serial-port">Serial Port</label>
+                        <select id="serial-port"></select>
+                        <button id="btn-connect" class="btn btn-small">Connect</button>
+                        <button id="btn-disconnect" class="btn btn-small">Disconnect</button>
+                    </div>
+                    <div class="form-row">
+                        <label for="poll-interval">Poll Interval (ms)</label>
+                        <input type="number" id="poll-interval" value="2000" min="500" max="10000">
+                    </div>
+                    <div class="form-row">
+                        <label for="verbose-toggle">Verbose Logging</label>
+                        <input type="checkbox" id="verbose-toggle">
+                    </div>
+                    <button id="btn-save-settings" class="btn">Save Settings</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Flash Modal -->
+    <div id="flash-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Flashing Firmware</h2>
+            <pre id="flash-output" class="terminal-output"></pre>
+            <button id="btn-flash-close" class="btn" onclick="closeModal('flash-modal')">Close</button>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal hidden">
+        <div class="modal-content">
+            <h2>Upload Animation</h2>
+            <div id="upload-form">
+                <div class="form-row">
+                    <label for="upload-name">Animation Name</label>
+                    <input type="text" id="upload-name" placeholder="my_animation" pattern="[a-z0-9_]+">
+                </div>
+                <div class="form-row">
+                    <label for="upload-file">Image (PNG or GIF)</label>
+                    <input type="file" id="upload-file" accept=".png,.gif,.jpg,.jpeg">
+                </div>
+                <button id="btn-upload-start" class="btn">Upload & Process</button>
+            </div>
+            <div id="upload-progress" class="hidden">
+                <p id="upload-step">Processing...</p>
+                <pre id="upload-output" class="terminal-output"></pre>
+            </div>
+            <button id="btn-upload-close" class="btn" onclick="closeModal('upload-modal')">Close</button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

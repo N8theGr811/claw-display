@@ -1,0 +1,128 @@
+/**
+ * flash.js - Firmware Flash API Routes
+ * ======================================
+ *
+ * Endpoints:
+ *   POST /api/flash          - Start firmware flash process
+ *   GET  /api/flash/:jobId   - Get flash job status
+ *
+ * Flash sequence:
+ *   1. Disconnect serial (only one process can hold the port)
+ *   2. Run PlatformIO upload command
+ *   3. Stream output via WebSocket
+ *   4. Reconnect serial on completion
+ */
+
+const { spawn } = require('child_process');
+const path = require('path');
+const crypto = require('crypto');
+
+// Active flash jobs
+const jobs = {};
+
+module.exports = function({ webServer, serial }) {
+
+    const firmwareDir = path.join(webServer.projectRoot, 'firmware');
+
+    webServer.route('POST', '/api/flash', async (req, res) => {
+        const jobId = crypto.randomBytes(4).toString('hex');
+        const port = serial.connectedPort || serial.manualPort;
+
+        if (!port) {
+            webServer._sendJson(res, 400, { error: 'No serial port known. Connect the device first.' });
+            return;
+        }
+
+        const job = { id: jobId, status: 'running', progress: 0, output: '' };
+        jobs[jobId] = job;
+
+        webServer._sendJson(res, 200, { jobId });
+
+        // Run flash in background
+        (async () => {
+            try {
+                // Disconnect serial to free the port
+                console.log('[flash] Disconnecting serial for flash...');
+                serial._closing = true;
+                if (serial.port && serial.port.isOpen) {
+                    serial.port.close();
+                    serial.connected = false;
+                }
+                await new Promise(r => setTimeout(r, 1000));
+
+                // Build flash command
+                const args = ['run', '--target', 'upload', '--upload-port', port];
+                console.log(`[flash] Running: pio ${args.join(' ')}`);
+
+                const proc = spawn('python', ['-m', 'platformio', ...args], {
+                    cwd: firmwareDir,
+                    shell: true,
+                });
+
+                proc.stdout.on('data', (data) => {
+                    const text = data.toString();
+                    job.output += text;
+                    if (webServer.wsBroadcaster) {
+                        webServer.wsBroadcaster.broadcast('flash_progress', {
+                            jobId, status: 'running', output: text,
+                        });
+                    }
+                });
+
+                proc.stderr.on('data', (data) => {
+                    const text = data.toString();
+                    job.output += text;
+                    if (webServer.wsBroadcaster) {
+                        webServer.wsBroadcaster.broadcast('flash_progress', {
+                            jobId, status: 'running', output: text,
+                        });
+                    }
+                });
+
+                const exitCode = await new Promise(resolve => {
+                    proc.on('close', resolve);
+                });
+
+                job.status = exitCode === 0 ? 'done' : 'error';
+                const msg = exitCode === 0 ? 'Flash complete!' : `Flash failed (exit code ${exitCode})`;
+                job.output += `\n${msg}\n`;
+
+                if (webServer.wsBroadcaster) {
+                    webServer.wsBroadcaster.broadcast('flash_progress', {
+                        jobId, status: job.status, output: `\n${msg}\n`,
+                    });
+                }
+
+                // Reconnect serial
+                console.log('[flash] Reconnecting serial...');
+                serial._closing = false;
+                await new Promise(r => setTimeout(r, 2000));
+                try {
+                    await serial.connect();
+                    if (webServer.currentAnimation) {
+                        serial.send(`ANIM:${webServer.currentAnimation}`);
+                    }
+                } catch (err) {
+                    console.error(`[flash] Reconnect failed: ${err.message}`);
+                }
+            } catch (err) {
+                job.status = 'error';
+                job.output += `\nError: ${err.message}\n`;
+                if (webServer.wsBroadcaster) {
+                    webServer.wsBroadcaster.broadcast('flash_progress', {
+                        jobId, status: 'error', output: `\nError: ${err.message}\n`,
+                    });
+                }
+            }
+        })();
+    });
+
+    webServer.route('GET', '/api/flash/:jobId', async (req, res, params) => {
+        const job = jobs[params.jobId];
+        if (!job) {
+            webServer._sendJson(res, 404, { error: 'Job not found' });
+            return;
+        }
+        webServer._sendJson(res, 200, job);
+    });
+};

@@ -33,6 +33,9 @@
 const { SerialConnection } = require('./serial');
 const { OpenClawPoller } = require('./poller');
 const { StateMachine } = require('./state');
+const logger = require('./web/logger');
+const { WebServer } = require('./web/server');
+const { WsBroadcaster } = require('./web/websocket');
 
 /**
  * Parse command-line arguments into an options object.
@@ -42,7 +45,7 @@ const { StateMachine } = require('./state');
  * @returns {{ port: string|null, verbose: boolean, help: boolean }}
  */
 function parseArgs(args) {
-    const opts = { port: null, verbose: false, help: false, animation: null };
+    const opts = { port: null, verbose: false, help: false, animation: null, web: false, webPort: 3000 };
 
     for (let i = 0; i < args.length; i++) {
         switch (args[i]) {
@@ -52,6 +55,12 @@ function parseArgs(args) {
             case '--animation':
             case '--anim':
                 opts.animation = args[++i] || null;
+                break;
+            case '--web':
+                opts.web = true;
+                break;
+            case '--web-port':
+                opts.webPort = parseInt(args[++i], 10) || 3000;
                 break;
             case '--verbose':
             case '-v':
@@ -75,6 +84,8 @@ claw-display - Status display for OpenClaw AI agents
 
 Usage:
   claw-display                      Start the daemon
+  claw-display --web                Enable web dashboard (default port 3000)
+  claw-display --web-port 8080      Set dashboard port
   claw-display --port COM3          Specify serial port manually
   claw-display --animation octopus  Choose animation (default: lobster)
   claw-display --verbose            Enable debug logging (API + serial traffic)
@@ -112,6 +123,9 @@ async function main() {
         process.exit(0);
     }
 
+    // Install logger first so all console output is captured
+    logger.install();
+
     console.log('Claw Display daemon starting...');
 
     // --- Initialize components ---
@@ -142,6 +156,26 @@ async function main() {
         }
         serial.send(currentState);
     };
+
+    // --- Start web dashboard if requested ---
+    let webServer = null;
+    let wsBroadcaster = null;
+
+    if (opts.web) {
+        webServer = new WebServer({ serial, poller, state, logger, opts });
+
+        // Register API routes (Tasks 5-9 will add more)
+        require('./web/routes/status')({ webServer, serial, state, logger });
+        require('./web/routes/animations')({ webServer, serial });
+        require('./web/routes/serial')({ webServer, serial });
+        require('./web/routes/settings')({ webServer, opts });
+        require('./web/routes/flash')({ webServer, serial });
+        require('./web/routes/upload')({ webServer, serial });
+
+        const httpServer = await webServer.start(opts.webPort);
+        wsBroadcaster = new WsBroadcaster(httpServer, { serial, state, logger, webServer });
+        webServer.wsBroadcaster = wsBroadcaster;
+    }
 
     // --- Graceful shutdown ---
     let shuttingDown = false;

@@ -37,6 +37,7 @@
 
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
+const EventEmitter = require('events');
 
 // --- Device identification ---
 // Update these after confirming with actual hardware (run --verbose to see values)
@@ -48,12 +49,13 @@ const BAUD_RATE = 115200;
 const HANDSHAKE_TIMEOUT_MS = 3000;   // Max wait for "OK" after connecting
 const RECONNECT_DELAY_MS = 5000;     // Delay between reconnection attempts
 
-class SerialConnection {
+class SerialConnection extends EventEmitter {
     /**
      * @param {string|null} manualPort - Override port path (e.g., "COM3"), or null for auto-detect
      * @param {boolean} verbose - Enable debug logging of serial traffic
      */
     constructor(manualPort = null, verbose = false) {
+        super();
         this.manualPort = manualPort;
         this.verbose = verbose;
 
@@ -65,6 +67,9 @@ class SerialConnection {
 
         /** @type {boolean} */
         this.connected = false;
+
+        /** @type {string|null} Path of the connected serial port */
+        this.connectedPort = null;
 
         /** @type {boolean} Prevents overlapping reconnect loops */
         this._reconnecting = false;
@@ -164,7 +169,9 @@ class SerialConnection {
                     handshakeResolved = true;
                     clearTimeout(timeout);
                     this.connected = true;
+                    this.connectedPort = portPath;
                     console.log(`Connected to Claw Display on ${portPath}`);
+                    this.emit('connection_change', { connected: true, port: portPath });
                     resolve();
                 }
             });
@@ -185,6 +192,10 @@ class SerialConnection {
             this.port.on('close', () => {
                 const wasConnected = this.connected;
                 this.connected = false;
+
+                if (wasConnected) {
+                    this.emit('connection_change', { connected: false, port: portPath });
+                }
 
                 // Only auto-reconnect on unexpected disconnects.
                 // Skip if we're intentionally closing or already reconnecting.

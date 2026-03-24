@@ -23,13 +23,17 @@
  * command when the display actually needs to change.
  */
 
+const EventEmitter = require('events');
+
 // How long to keep the display ACTIVE after the last active poll.
 // Prevents flicker from short tasks. 3 seconds keeps it responsive
 // while avoiding rapid on/off toggling.
 const DEBOUNCE_MS = 3000;
 
-class StateMachine {
+class StateMachine extends EventEmitter {
     constructor() {
+        super();
+
         /** @type {'IDLE'|'ACTIVE'} */
         this.currentState = 'IDLE';
 
@@ -69,9 +73,10 @@ class StateMachine {
             targetState = 'IDLE';
         }
 
-        // Fire callback only on actual transitions
+        // Fire callback and event only on actual transitions
         if (targetState !== this.currentState) {
             this.currentState = targetState;
+            this.emit('state_change', { state: targetState });
             if (this.onStateChange) {
                 this.onStateChange(targetState);
             }
