@@ -47,6 +47,12 @@ module.exports = function({ webServer, serial }) {
     webServer.route('GET', '/api/animations/:name/preview', async (req, res, params) => {
         const gifPath = path.join(framesDir, params.name, 'preview.gif');
 
+        // Prevent path traversal: ensure resolved path stays within framesDir
+        if (!gifPath.startsWith(framesDir + path.sep) && !gifPath.startsWith(framesDir + '/')) {
+            webServer._sendJson(res, 403, { error: 'Forbidden' });
+            return;
+        }
+
         if (!fs.existsSync(gifPath)) {
             webServer._sendJson(res, 404, { error: 'Preview not found' });
             return;
@@ -70,8 +76,12 @@ module.exports = function({ webServer, serial }) {
                 return;
             }
 
-            // Verify animation exists on disk
+            // Verify animation exists on disk (with path traversal check)
             const animDir = path.join(framesDir, name);
+            if (!animDir.startsWith(framesDir + path.sep) && !animDir.startsWith(framesDir + '/')) {
+                webServer._sendJson(res, 403, { ok: false, error: 'Forbidden' });
+                return;
+            }
             if (!fs.existsSync(animDir)) {
                 webServer._sendJson(res, 404, { ok: false, error: `Animation "${name}" not found` });
                 return;

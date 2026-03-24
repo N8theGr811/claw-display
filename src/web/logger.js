@@ -55,8 +55,10 @@ class Logger extends EventEmitter {
                 };
 
                 this._buffer.push(entry);
-                if (this._buffer.length > MAX_LINES) {
-                    this._buffer.shift();
+                // Periodic truncation instead of shift() on every overflow.
+                // Slicing once at 600 is O(n) once vs O(n) on every line.
+                if (this._buffer.length > MAX_LINES + 100) {
+                    this._buffer = this._buffer.slice(-MAX_LINES);
                 }
 
                 this.emit('log', entry);

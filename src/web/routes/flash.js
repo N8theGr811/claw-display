@@ -45,9 +45,13 @@ module.exports = function({ webServer, serial }) {
                 console.log('[flash] Disconnecting serial for flash...');
                 serial._closing = true;
                 if (serial.port && serial.port.isOpen) {
-                    serial.port.close();
+                    await new Promise((resolve, reject) => {
+                        serial.port.close(err => err ? reject(err) : resolve());
+                    });
                     serial.connected = false;
+                    serial.connectedPort = null;
                 }
+                // Extra delay for OS to fully release the port
                 await new Promise(r => setTimeout(r, 1000));
 
                 // Build flash command
@@ -86,6 +90,9 @@ module.exports = function({ webServer, serial }) {
                 job.status = exitCode === 0 ? 'done' : 'error';
                 const msg = exitCode === 0 ? 'Flash complete!' : `Flash failed (exit code ${exitCode})`;
                 job.output += `\n${msg}\n`;
+
+                // Clean up job after 60 seconds to prevent memory leak
+                setTimeout(() => delete jobs[jobId], 60000);
 
                 if (webServer.wsBroadcaster) {
                     webServer.wsBroadcaster.broadcast('flash_progress', {

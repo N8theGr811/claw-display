@@ -79,9 +79,18 @@ async function parseMultipart(req) {
             return;
         }
 
+        const MAX_UPLOAD_SIZE = 20 * 1024 * 1024; // 20MB limit
         const boundary = Buffer.from(`--${boundaryMatch[1]}`);
         const chunks = [];
-        req.on('data', chunk => chunks.push(chunk));
+        let totalSize = 0;
+        req.on('data', chunk => {
+            totalSize += chunk.length;
+            if (totalSize > MAX_UPLOAD_SIZE) {
+                req.destroy(new Error('Upload too large (max 20MB)'));
+                return;
+            }
+            chunks.push(chunk);
+        });
         req.on('end', () => {
             const buffer = Buffer.concat(chunks);
             const CRLF = Buffer.from('\r\n');
@@ -191,8 +200,11 @@ async function processUpload(job, name, fileBuffer, fileName, webServer, serial,
         if (port) {
             serial._closing = true;
             if (serial.port && serial.port.isOpen) {
-                serial.port.close();
+                await new Promise((resolve, reject) => {
+                    serial.port.close(err => err ? reject(err) : resolve());
+                });
                 serial.connected = false;
+                serial.connectedPort = null;
             }
             await new Promise(r => setTimeout(r, 1000));
 
@@ -222,6 +234,9 @@ async function processUpload(job, name, fileBuffer, fileName, webServer, serial,
                 jobId: job.id, status: 'done', step: 'Done!',
             });
         }
+
+        // Clean up job after 60 seconds to prevent memory leak
+        setTimeout(() => delete jobs[job.id], 60000);
 
     } catch (err) {
         job.status = 'error';
@@ -263,6 +278,12 @@ function updateFramesH(framesIncludeDir, name, prefix, frameCount) {
     let content = fs.readFileSync(framesHPath, 'utf8');
 
     const constName = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+
+    // Check if this animation already exists in frames.h
+    if (content.includes(`"${name}"`)) {
+        console.log(`[upload] Animation "${name}" already in frames.h, skipping update`);
+        return;
+    }
 
     // Build include lines
     const includes = [];

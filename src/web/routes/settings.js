@@ -27,8 +27,17 @@ module.exports = function({ webServer, opts }) {
         try {
             const body = await webServer.readJson(req);
 
-            if (body.verbose !== undefined) {
-                opts.verbose = !!body.verbose;
+            // Only accept known settings keys
+            const ALLOWED_KEYS = ['verbose', 'pollInterval', 'animation'];
+            const sanitized = {};
+            for (const key of ALLOWED_KEYS) {
+                if (body[key] !== undefined) {
+                    sanitized[key] = body[key];
+                }
+            }
+
+            if (sanitized.verbose !== undefined) {
+                opts.verbose = !!sanitized.verbose;
             }
 
             // Save to config.json for persistence
@@ -37,7 +46,7 @@ module.exports = function({ webServer, opts }) {
                 config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
             } catch (e) { /* file doesn't exist yet */ }
 
-            Object.assign(config, body);
+            Object.assign(config, sanitized);
             fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 
             webServer._sendJson(res, 200, { ok: true });
