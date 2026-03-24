@@ -2,114 +2,138 @@
  * poller.js - OpenClaw Agent Activity Poller
  * ============================================
  *
- * Detects whether an OpenClaw agent is actively working by polling
- * session data via the `openclaw sessions` CLI command.
- *
- * WHY CLI INSTEAD OF HTTP:
- * OpenClaw's gateway (port 18789) serves a web dashboard over HTTP,
- * not a REST API. The actual data is accessed via WebSocket RPC or
- * the CLI. The CLI is the simplest reliable method until OpenClaw
- * ships a formal busy/idle API (tracked in GitHub issue #39127).
+ * Detects whether an OpenClaw agent is actively working by watching
+ * the session JSONL file's mtime. OpenClaw writes to this file
+ * continuously during generation (each tool call, each message turn),
+ * so mtime is a real-time "currently working" signal — no artificial
+ * hold times needed.
  *
  * HOW ACTIVITY IS DETECTED:
- * We run `openclaw sessions --json --active 1` which returns sessions
- * updated within the last 1 minute. If any session's token counts are
- * increasing between polls, the agent is actively processing.
+ * 1. Primary: session JSONL file mtime changed within last FILE_ACTIVE_MS.
+ *    This fires continuously during generation as the file is written.
+ * 2. Fallback: totalTokens increased between polls (catches response
+ *    completion if file path isn't available yet).
+ * 3. Fallback: updatedAt changed since last poll (catches task starts).
  *
- * DEBUGGING GUIDE:
- * ----------------
- * - "openclaw: command not found": OpenClaw isn't installed or not in PATH.
- *   Install with `npm install -g openclaw` or check your PATH.
- * - Display never activates: Run `openclaw sessions --json --active 1`
- *   manually to see what it returns. Check if sessions exist.
- * - Display stays active too long: The 5-second active window + 2-second
- *   debounce in state.js means it can take up to ~9 seconds to go idle.
+ * DEBUGGING:
+ * - Run with --verbose to see file mtime and poll results.
+ * - If display never activates, check that sessionFile path is found
+ *   and the file is being updated during generation.
  */
 
 const { exec } = require('child_process');
+const fs = require('fs');
 
-const POLL_INTERVAL_MS = 2000;  // Check every 2 seconds
+const POLL_INTERVAL_MS = 1000;   // Poll every second for snappy response
+const FILE_ACTIVE_MS   = 4000;   // File written within 4s = actively working
 
-// Store previous token counts to detect activity (tokens increasing = working)
-let previousTokens = new Map();
+let previousTokens  = new Map();
+let previousUpdated = new Map();
+let sessionFilePath = null;       // Path to active session JSONL
+
+/**
+ * Extract the session JSONL file path from the CLI output.
+ * Cached after first successful find.
+ */
+function extractSessionFile(sessions) {
+    if (sessionFilePath && fs.existsSync(sessionFilePath)) return sessionFilePath;
+
+    for (const session of sessions) {
+        if (session.sessionFile && fs.existsSync(session.sessionFile)) {
+            sessionFilePath = session.sessionFile;
+            return sessionFilePath;
+        }
+    }
+    return null;
+}
+
+/**
+ * Check if the session JSONL file was written to recently.
+ * This is the primary activity signal — OpenClaw writes to it during generation.
+ *
+ * @param {string|null} filePath
+ * @returns {boolean}
+ */
+function isFileActive(filePath) {
+    if (!filePath) return false;
+    try {
+        const stat = fs.statSync(filePath);
+        return (Date.now() - stat.mtimeMs) < FILE_ACTIVE_MS;
+    } catch (_) {
+        return false;
+    }
+}
 
 /**
  * Determine if any OpenClaw agent is actively working.
- *
- * Checks two signals:
- * 1. Are there sessions updated within the last minute?
- * 2. Are token counts increasing between polls? (strongest signal)
- *
- * @param {Array} sessions - Parsed JSON array from openclaw sessions --json
- * @returns {boolean} true if an agent appears to be actively working
+ * Combines file mtime (primary) + token delta + updatedAt delta (fallbacks).
  */
 function isAgentActive(sessions) {
-    if (!Array.isArray(sessions) || sessions.length === 0) {
-        return false;
-    }
+    if (!Array.isArray(sessions) || sessions.length === 0) return false;
 
-    let active = false;
+    // Primary: session file mtime
+    const filePath = extractSessionFile(sessions);
+    if (isFileActive(filePath)) return true;
 
+    // Fallback: token count increased since last poll
     for (const session of sessions) {
-        const id = session.sessionId || session.id || '';
+        const id          = session.sessionId || session.id || '';
         const totalTokens = session.totalTokens || 0;
+        const prevTokens  = previousTokens.get(id) || 0;
 
-        // Check if tokens increased since last poll (agent is generating)
-        const prevTokens = previousTokens.get(id) || 0;
-        if (totalTokens > prevTokens && prevTokens > 0) {
-            active = true;
-        }
+        if (totalTokens > prevTokens && prevTokens > 0) return true;
 
         previousTokens.set(id, totalTokens);
     }
 
-    // Also consider "active" if there are very recently updated sessions
-    // (within last 30 seconds), even if we haven't seen token changes yet.
-    // This catches the start of a new task before tokens begin accumulating.
+    // Fallback: updatedAt changed since last poll (new task started)
     for (const session of sessions) {
-        const updatedAt = session.updatedAt || session.updated_at || '';
-        if (updatedAt) {
-            const updatedTime = new Date(updatedAt).getTime();
-            const now = Date.now();
-            if (now - updatedTime < 45000) {  // Updated within 45 seconds
-                active = true;
-            }
+        const id        = session.sessionId || session.id || '';
+        const updatedAt = session.updatedAt || 0;
+        const prevUpd   = previousUpdated.get(id) || 0;
+
+        if (updatedAt > prevUpd) {
+            previousUpdated.set(id, updatedAt);
+            return true;
         }
+        previousUpdated.set(id, updatedAt);
     }
 
-    return active;
+    return false;
 }
 
 /**
- * Run the openclaw CLI and return parsed JSON output.
- *
- * @returns {Promise<Array>} Parsed session data, or empty array on error
+ * Fetch session data via the openclaw CLI.
+ * Also enriches sessions with sessionFile paths from the raw store.
  */
 function fetchSessions(verbose) {
     return new Promise((resolve) => {
-        exec('openclaw sessions --json --active 1', {
-            timeout: 5000,  // Don't hang if CLI is stuck
-        }, (error, stdout, stderr) => {
+        exec('openclaw sessions --json --active 5', { timeout: 5000 }, (error, stdout) => {
             if (error) {
-                if (verbose) {
-                    console.log(`[poller] CLI error: ${error.message}`);
-                }
+                if (verbose) console.log(`[poller] CLI error: ${error.message}`);
                 resolve([]);
                 return;
             }
-
             try {
                 const data = JSON.parse(stdout);
-                if (verbose) {
-                    console.log(`[poller] Sessions: ${JSON.stringify(data).substring(0, 200)}...`);
+                let sessions = Array.isArray(data) ? data : (data.sessions || data.data || []);
+
+                // Enrich with sessionFile from the raw store path reported by CLI
+                if (data.path && !sessionFilePath) {
+                    try {
+                        const store = JSON.parse(fs.readFileSync(data.path, 'utf8'));
+                        for (const entry of Object.values(store)) {
+                            if (entry.sessionFile && fs.existsSync(entry.sessionFile)) {
+                                sessionFilePath = entry.sessionFile;
+                                break;
+                            }
+                        }
+                    } catch (_) {}
                 }
-                // Handle both array and object-with-array responses
-                const sessions = Array.isArray(data) ? data : (data.sessions || data.data || []);
+
+                if (verbose) console.log(`[poller] ${sessions.length} sessions, file: ${sessionFilePath}`);
                 resolve(sessions);
             } catch {
-                if (verbose) {
-                    console.log(`[poller] Failed to parse CLI output: ${stdout.substring(0, 100)}`);
-                }
                 resolve([]);
             }
         });
@@ -117,49 +141,25 @@ function fetchSessions(verbose) {
 }
 
 class OpenClawPoller {
-    /**
-     * @param {boolean} verbose - Enable debug logging
-     */
     constructor(verbose = false) {
-        this.verbose = verbose;
-
-        /** @type {NodeJS.Timeout|null} */
+        this.verbose  = verbose;
         this.interval = null;
-
-        /**
-         * Callback fired on each poll with the active/idle result.
-         * @type {((isActive: boolean) => void)|null}
-         */
         this.onStatus = null;
     }
 
-    /**
-     * Execute a single poll.
-     */
     async poll() {
         const sessions = await fetchSessions(this.verbose);
-        const active = isAgentActive(sessions);
+        const active   = isAgentActive(sessions);
 
-        if (this.verbose) {
-            console.log(`[poller] Active: ${active} (${sessions.length} recent sessions)`);
-        }
-
-        if (this.onStatus) {
-            this.onStatus(active);
-        }
+        if (this.verbose) console.log(`[poller] active=${active}`);
+        if (this.onStatus) this.onStatus(active);
     }
 
-    /**
-     * Start polling. First poll fires immediately, then every POLL_INTERVAL_MS.
-     */
     start() {
         this.poll();
         this.interval = setInterval(() => this.poll(), POLL_INTERVAL_MS);
     }
 
-    /**
-     * Stop polling. Safe to call when already stopped.
-     */
     stop() {
         if (this.interval) {
             clearInterval(this.interval);
