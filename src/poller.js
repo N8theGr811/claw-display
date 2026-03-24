@@ -71,7 +71,7 @@ function isAgentActive(sessions) {
         if (updatedAt) {
             const updatedTime = new Date(updatedAt).getTime();
             const now = Date.now();
-            if (now - updatedTime < 5000) {  // Updated within 5 seconds
+            if (now - updatedTime < 6000) {  // Updated within 6 seconds
                 active = true;
             }
         }
