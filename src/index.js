@@ -80,7 +80,7 @@ Usage:
   claw-display --verbose            Enable debug logging (API + serial traffic)
   claw-display --help               Show this help
 
-Available animations: lobster (default), octopus
+Available animations: lobster (default), octopus, octopus_emoji
 
 How it works:
   1. Connects to your Claw Display over USB serial
