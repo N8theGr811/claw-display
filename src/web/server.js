@@ -60,8 +60,9 @@ class WebServer {
         // Path to the web/ directory containing frontend files
         this.staticDir = path.join(__dirname, '..', '..', 'web');
 
-        // Path to the project root (for assets, firmware, tools)
-        this.projectRoot = path.join(__dirname, '..', '..', '..');
+        // Path to the daemon root (for assets, firmware, tools)
+        // daemon/ is the root of the npm package and git repo
+        this.projectRoot = path.join(__dirname, '..', '..');
 
         // API route handlers (populated by registerRoutes)
         this._routes = [];
