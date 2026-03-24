@@ -194,9 +194,14 @@ function renderAnimations(animations) {
             badge.className += ' badge-equipped';
         }
 
-        // Toggle button: add/remove from flash queue
+        // Toggle button: equip (if in firmware), queue/remove (if not)
         const toggleBtn = document.createElement('button');
-        if (isQueued) {
+        if (isEquipped) {
+            toggleBtn.className = `btn-queue btn-queue-equip${isActive ? ' btn-queue-active' : ''}`;
+            toggleBtn.textContent = isActive ? '✓ Active' : 'Equip';
+            toggleBtn.disabled = isActive;
+            toggleBtn.onclick = (e) => { e.stopPropagation(); selectAnimation(anim.name); };
+        } else if (isQueued) {
             toggleBtn.className = 'btn-queue btn-queue-remove';
             toggleBtn.textContent = '✕ Remove';
             toggleBtn.onclick = (e) => { e.stopPropagation(); toggleQueue(anim.name); };

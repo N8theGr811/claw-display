@@ -224,6 +224,24 @@ main {
     color: #000;
 }
 
+.btn-queue-equip {
+    background: rgba(16,185,129,0.15);
+    color: #10b981;
+    border-color: #10b981;
+}
+
+.btn-queue-equip:hover:not(:disabled) {
+    background: #10b981;
+    color: #000;
+}
+
+.btn-queue-active {
+    background: rgba(16,185,129,0.3);
+    color: #10b981;
+    border-color: #10b981;
+    cursor: default;
+}
+
 /* Flash queue bar */
 #flash-queue-bar {
     display: flex;
