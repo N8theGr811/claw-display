@@ -9,17 +9,8 @@
  *
  * State transitions:
  *   IDLE ---[isActive=true]---> ACTIVE
- *   ACTIVE ---[isActive=false, debounce expired, min-hold expired]---> IDLE
- *   ACTIVE ---[isActive=false, within debounce OR min-hold]---> ACTIVE (held)
- *
- * Two timers work together:
- *   DEBOUNCE_MS    - How long after the last active poll signal to stay on.
- *                    Prevents flicker between polls.
- *   MIN_ACTIVE_MS  - Minimum time to stay ACTIVE once triggered.
- *                    Prevents the display cutting out mid-task when OpenClaw
- *                    only reports token counts at response completion (not
- *                    continuously during generation). Without this, long
- *                    responses cause the display to go idle mid-task.
+ *   ACTIVE ---[isActive=false, debounce expired]---> IDLE
+ *   ACTIVE ---[isActive=false, debounce NOT expired]---> ACTIVE (held)
  *
  * The onStateChange callback only fires on actual transitions, not
  * on every update() call. This means the serial port only gets a
@@ -28,12 +19,9 @@
 
 const EventEmitter = require('events');
 
-// How long to stay ACTIVE after the last poll that returned active.
+// How long to keep the display ACTIVE after the last active poll signal.
+// Short enough to feel responsive, long enough to avoid flicker.
 const DEBOUNCE_MS = 5000;
-
-// Minimum time to stay ACTIVE once triggered, regardless of poll results.
-// Set to cover typical response generation times.
-const MIN_ACTIVE_MS = 25000;
 
 class StateMachine extends EventEmitter {
     constructor() {
@@ -44,9 +32,6 @@ class StateMachine extends EventEmitter {
 
         /** @type {number} Timestamp of the last poll that returned active */
         this.lastActiveTime = 0;
-
-        /** @type {number} Timestamp of when we last transitioned to ACTIVE */
-        this.activatedAt = 0;
 
         /**
          * Callback fired on state transitions.
@@ -72,10 +57,6 @@ class StateMachine extends EventEmitter {
         if (isActive) {
             targetState = 'ACTIVE';
         } else if (now - this.lastActiveTime < DEBOUNCE_MS) {
-            // Within debounce window — hold on
-            targetState = 'ACTIVE';
-        } else if (this.activatedAt > 0 && now - this.activatedAt < MIN_ACTIVE_MS) {
-            // Within minimum active hold — keep on even if no recent poll signals
             targetState = 'ACTIVE';
         } else {
             targetState = 'IDLE';
@@ -83,13 +64,6 @@ class StateMachine extends EventEmitter {
 
         if (targetState !== this.currentState) {
             this.currentState = targetState;
-
-            if (targetState === 'ACTIVE') {
-                this.activatedAt = now; // Record activation time
-            } else {
-                this.activatedAt = 0;  // Reset on idle
-            }
-
             this.emit('state_change', { state: targetState });
             if (this.onStateChange) {
                 this.onStateChange(targetState);
@@ -108,4 +82,4 @@ class StateMachine extends EventEmitter {
     }
 }
 
-module.exports = { StateMachine, DEBOUNCE_MS, MIN_ACTIVE_MS };
+module.exports = { StateMachine, DEBOUNCE_MS };
