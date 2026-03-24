@@ -173,6 +173,91 @@ def motion_snap(sprite_array, frame_i, total, **kw):
     return 0, y_off, 0, waved
 
 
+def motion_robot(sprite_array, frame_i, total, **kw):
+    """Robot: head bounce + sway + teeth shift side-to-side."""
+    h, w, c = sprite_array.shape
+    phase = (frame_i / total) * 2 * math.pi
+
+    # Head bounce (double frequency for mechanical feel)
+    y_off = int(4 * abs(math.sin(phase * 2)))
+
+    # Left-right sway
+    x_off = int(6 * math.sin(phase))
+
+    # Teeth/jaw shift: move the bottom ~25% of sprite horizontally
+    result = sprite_array.copy()
+    jaw_start = int(h * 0.7)
+    teeth_shift = int(4 * math.sin(phase * 3))  # triple frequency for chattering
+
+    if teeth_shift != 0:
+        for y in range(jaw_start, h):
+            # Increase shift toward bottom for natural look
+            progress = (y - jaw_start) / max(1, h - jaw_start)
+            row_shift = int(teeth_shift * progress)
+            if row_shift == 0:
+                continue
+            row = sprite_array[y]
+            shifted = np.zeros_like(row)
+            if row_shift > 0:
+                if row_shift < w:
+                    shifted[row_shift:] = row[:-row_shift]
+            else:
+                if -row_shift < w:
+                    shifted[:row_shift] = row[-row_shift:]
+            result[y] = shifted
+
+    return x_off, -y_off, 0, result
+
+
+def motion_ufo(sprite_array, frame_i, total, **kw):
+    """UFO alien: float + eye pulse + turning left-right."""
+    h, w, c = sprite_array.shape
+    phase = (frame_i / total) * 2 * math.pi
+
+    # Floating sway (slow, hovering feel)
+    x_off = int(8 * math.sin(phase))
+    y_off = int(4 * math.sin(phase * 0.5))
+
+    # Eye/head pulse: scale the top 40% of the sprite slightly
+    # This creates a subtle "breathing" or "eye widening" effect
+    result = sprite_array.copy()
+    head_end = int(h * 0.45)
+    pulse = 1.0 + 0.06 * math.sin(phase * 2)  # scale between 0.94 and 1.06
+
+    if abs(pulse - 1.0) > 0.01:
+        head_section = Image.fromarray(sprite_array[:head_end, :, :])
+        new_w = int(w * pulse)
+        new_h = int(head_end * pulse)
+        scaled = head_section.resize((new_w, new_h), Image.NEAREST)
+        scaled_arr = np.array(scaled)
+
+        # Center the scaled section back into result
+        paste_x = (w - new_w) // 2
+        paste_y = (head_end - new_h) // 2
+
+        # Clear the head region first
+        result[:head_end, :, :] = 0
+
+        # Paste scaled section (clipped to bounds)
+        src_y_start = max(0, -paste_y)
+        src_x_start = max(0, -paste_x)
+        dst_y_start = max(0, paste_y)
+        dst_x_start = max(0, paste_x)
+        copy_h = min(new_h - src_y_start, head_end - dst_y_start)
+        copy_w = min(new_w - src_x_start, w - dst_x_start)
+
+        if copy_h > 0 and copy_w > 0:
+            result[dst_y_start:dst_y_start+copy_h,
+                   dst_x_start:dst_x_start+copy_w, :] = \
+                scaled_arr[src_y_start:src_y_start+copy_h,
+                           src_x_start:src_x_start+copy_w, :]
+
+    # Slight rotation for turning left-right
+    rotation = 5 * math.sin(phase)
+
+    return x_off, y_off, rotation, result
+
+
 MOTION_MAP = {
     'bob': motion_bob,
     'walk': motion_walk,
@@ -181,6 +266,8 @@ MOTION_MAP = {
     'tilt': motion_tilt,
     'chill': motion_chill,
     'snap': motion_snap,
+    'robot': motion_robot,
+    'ufo': motion_ufo,
 }
 
 
