@@ -56,6 +56,26 @@ function getFrameCount(projectRoot, name) {
 }
 
 /**
+ * Detect the actual variable prefix used in existing header files.
+ * Reads frame_000.h and extracts the prefix from the const declaration.
+ * Falls back to name-derived prefix if detection fails.
+ *
+ * @param {string} projectRoot
+ * @param {string} name
+ * @returns {string} e.g. "oe_" for octopus_emoji, "alien_" for alien
+ */
+function detectPrefix(projectRoot, name) {
+    try {
+        const headerPath = path.join(projectRoot, 'firmware', 'include', 'frames', name, 'frame_000.h');
+        const content = fs.readFileSync(headerPath, 'utf8');
+        const match = content.match(/^const uint16_t (\w+)frame_000\[/m);
+        if (match) return match[1];
+    } catch (_) {}
+    // Fallback: derive from name
+    return `${name.replace(/[^a-z0-9]/gi, '_')}_`;
+}
+
+/**
  * Check if an animation's headers are already generated.
  * @param {string} projectRoot
  * @param {string} name
@@ -102,8 +122,8 @@ function rebuildFramesH(projectRoot, names, broadcast) {
 
     // Collect metadata for each animation
     const animations = names.map(name => {
-        const prefix    = `${name.replace(/[^a-z0-9]/gi, '_')}_`;
-        const constName = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+        const prefix     = detectPrefix(projectRoot, name);
+        const constName  = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
         const frameCount = getFrameCount(projectRoot, name);
         return { name, prefix, constName, frameCount };
     });
@@ -189,4 +209,4 @@ ${registryEntries}
     broadcast(`frames.h rebuilt with ${names.length} animations: ${names.join(', ')}`);
 }
 
-module.exports = { convertFrames, rebuildFramesH, headersExist, isRegistered, getFrameCount };
+module.exports = { convertFrames, rebuildFramesH, headersExist, isRegistered, getFrameCount, detectPrefix };
