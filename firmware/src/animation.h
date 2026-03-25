@@ -37,7 +37,7 @@
 
 /**
  * Initialize animation state. Must be called once in setup().
- * Loads the first animation set ("lobster") as default.
+ * Loads the first animation set as default.
  * Does not start playback.
  */
 void animation_init();

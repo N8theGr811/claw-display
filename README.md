@@ -1,6 +1,6 @@
 # Claw Display
 
-A USB plug-and-play mini display that shows an animated status indicator when your OpenClaw AI agent is actively working. Plug it in, install the daemon, and watch the lobster dance while your agent thinks.
+A USB plug-and-play mini display that shows an animated status indicator when your OpenClaw AI agent is actively working. Plug it in, install the daemon, and watch the animation play while your agent thinks.
 
 ## What It Does
 
@@ -130,10 +130,10 @@ The firmware supports multiple animation sets baked into flash. To switch:
 ```bash
 # From the daemon (future: config file or CLI flag)
 # Or manually via serial:
-echo "ANIM:lobster" > /dev/ttyACM0
+echo "ANIM:octopus_emoji" > /dev/ttyACM0
 ```
 
-Currently available: `lobster` (default).
+Currently available: `octopus_emoji` (default).
 
 To add new animations, see the "Adding New Animations" section in `firmware/include/frames/frames.h`.
 
