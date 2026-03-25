@@ -87,11 +87,11 @@ Usage:
   claw-display --web                Enable web dashboard (default port 3000)
   claw-display --web-port 8080      Set dashboard port
   claw-display --port COM3          Specify serial port manually
-  claw-display --animation octopus  Choose animation (default: lobster)
+  claw-display --animation octopus_emoji  Choose animation (default: octopus_emoji)
   claw-display --verbose            Enable debug logging (API + serial traffic)
   claw-display --help               Show this help
 
-Available animations: lobster (default), octopus, octopus_emoji
+Available animations: octopus_emoji (default)
 
 How it works:
   1. Connects to your Claw Display over USB serial

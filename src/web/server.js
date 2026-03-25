@@ -52,7 +52,7 @@ class WebServer {
         this.opts = deps.opts;
 
         // Track current animation name
-        this.currentAnimation = deps.opts.animation || 'lobster';
+        this.currentAnimation = deps.opts.animation || 'octopus_emoji';
 
         // Daemon start time for uptime calculation
         this.startTime = Date.now();
