@@ -194,14 +194,24 @@ function renderAnimations(animations) {
             badge.className += ' badge-equipped';
         }
 
-        // Toggle button: equip (if in firmware), queue/remove (if not)
-        const toggleBtn = document.createElement('button');
+        // Select button: only for animations already in firmware
+        const selectBtn = document.createElement('button');
         if (isEquipped) {
-            toggleBtn.className = `btn-queue btn-queue-equip${isActive ? ' btn-queue-active' : ''}`;
-            toggleBtn.textContent = isActive ? '✓ Active' : 'Equip';
-            toggleBtn.disabled = isActive;
-            toggleBtn.onclick = (e) => { e.stopPropagation(); selectAnimation(anim.name); };
-        } else if (isQueued) {
+            selectBtn.className = `btn-queue btn-select${isActive ? ' btn-select-active' : ''}`;
+            selectBtn.textContent = isActive ? '✓ Active' : '▶ Select';
+            selectBtn.disabled = isActive;
+            selectBtn.title = isActive ? 'Currently playing' : 'Switch display to this animation';
+            selectBtn.onclick = (e) => { e.stopPropagation(); selectAnimation(anim.name); };
+        } else {
+            selectBtn.className = 'btn-queue btn-select btn-select-disabled';
+            selectBtn.textContent = '▶ Select';
+            selectBtn.disabled = true;
+            selectBtn.title = 'Not in firmware — queue and flash first';
+        }
+
+        // Queue/remove button for flash operations
+        const toggleBtn = document.createElement('button');
+        if (isQueued) {
             toggleBtn.className = 'btn-queue btn-queue-remove';
             toggleBtn.textContent = '✕ Remove';
             toggleBtn.onclick = (e) => { e.stopPropagation(); toggleQueue(anim.name); };
@@ -218,6 +228,7 @@ function renderAnimations(animations) {
         card.appendChild(name);
         card.appendChild(count);
         if (badge.textContent) card.appendChild(badge);
+        card.appendChild(selectBtn);
         card.appendChild(toggleBtn);
         grid.appendChild(card);
     }

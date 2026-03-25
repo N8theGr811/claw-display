@@ -224,22 +224,27 @@ main {
     color: #000;
 }
 
-.btn-queue-equip {
+.btn-select {
     background: rgba(16,185,129,0.15);
     color: #10b981;
     border-color: #10b981;
 }
 
-.btn-queue-equip:hover:not(:disabled) {
+.btn-select:hover:not(:disabled) {
     background: #10b981;
     color: #000;
 }
 
-.btn-queue-active {
+.btn-select-active {
     background: rgba(16,185,129,0.3);
     color: #10b981;
     border-color: #10b981;
     cursor: default;
+}
+
+.btn-select-disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
 }
 
 /* Flash queue bar */
