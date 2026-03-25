@@ -20,7 +20,13 @@
  * Each 240x240 RGB565 frame = 112.5 KB flash.
  * ESP32-S3 has ~8MB usable flash with custom partition.
  * Octopus Emoji: 16 frames = 1.8 MB
+<<<<<<< HEAD
  * Total: 16 frames = 1.8 MB (~22% of budget)
+=======
+ * OpenClaw Emoji: 24 frames = 2.6 MB
+ * OpenClaw Logo: 24 frames = 2.6 MB
+ * Total: 90 frames = 10.0 MB (~77% of budget)
+>>>>>>> origin/master
  */
 
 #pragma once
@@ -57,6 +63,86 @@ const uint16_t* const OCTOPUS_EMOJI_FRAMES[] PROGMEM = {
 };
 
 // ============================================================================
+// Animation Set: "openclaw_emoji" (24 frames)
+// Generated from: assets/frames/openclaw_emoji/ with --prefix oce_
+// ============================================================================
+#include "openclaw_emoji/frame_000.h"
+#include "openclaw_emoji/frame_001.h"
+#include "openclaw_emoji/frame_002.h"
+#include "openclaw_emoji/frame_003.h"
+#include "openclaw_emoji/frame_004.h"
+#include "openclaw_emoji/frame_005.h"
+#include "openclaw_emoji/frame_006.h"
+#include "openclaw_emoji/frame_007.h"
+#include "openclaw_emoji/frame_008.h"
+#include "openclaw_emoji/frame_009.h"
+#include "openclaw_emoji/frame_010.h"
+#include "openclaw_emoji/frame_011.h"
+#include "openclaw_emoji/frame_012.h"
+#include "openclaw_emoji/frame_013.h"
+#include "openclaw_emoji/frame_014.h"
+#include "openclaw_emoji/frame_015.h"
+#include "openclaw_emoji/frame_016.h"
+#include "openclaw_emoji/frame_017.h"
+#include "openclaw_emoji/frame_018.h"
+#include "openclaw_emoji/frame_019.h"
+#include "openclaw_emoji/frame_020.h"
+#include "openclaw_emoji/frame_021.h"
+#include "openclaw_emoji/frame_022.h"
+#include "openclaw_emoji/frame_023.h"
+
+#define OPENCLAW_EMOJI_FRAME_COUNT 24
+
+const uint16_t* const OPENCLAW_EMOJI_FRAMES[] PROGMEM = {
+    oce_frame_000, oce_frame_001, oce_frame_002, oce_frame_003,
+    oce_frame_004, oce_frame_005, oce_frame_006, oce_frame_007,
+    oce_frame_008, oce_frame_009, oce_frame_010, oce_frame_011,
+    oce_frame_012, oce_frame_013, oce_frame_014, oce_frame_015,
+    oce_frame_016, oce_frame_017, oce_frame_018, oce_frame_019,
+    oce_frame_020, oce_frame_021, oce_frame_022, oce_frame_023,
+};
+
+// ============================================================================
+// Animation Set: "openclaw_logo" (24 frames)
+// Generated from: assets/frames/openclaw_logo/ with --prefix ocl_
+// ============================================================================
+#include "openclaw_logo/frame_000.h"
+#include "openclaw_logo/frame_001.h"
+#include "openclaw_logo/frame_002.h"
+#include "openclaw_logo/frame_003.h"
+#include "openclaw_logo/frame_004.h"
+#include "openclaw_logo/frame_005.h"
+#include "openclaw_logo/frame_006.h"
+#include "openclaw_logo/frame_007.h"
+#include "openclaw_logo/frame_008.h"
+#include "openclaw_logo/frame_009.h"
+#include "openclaw_logo/frame_010.h"
+#include "openclaw_logo/frame_011.h"
+#include "openclaw_logo/frame_012.h"
+#include "openclaw_logo/frame_013.h"
+#include "openclaw_logo/frame_014.h"
+#include "openclaw_logo/frame_015.h"
+#include "openclaw_logo/frame_016.h"
+#include "openclaw_logo/frame_017.h"
+#include "openclaw_logo/frame_018.h"
+#include "openclaw_logo/frame_019.h"
+#include "openclaw_logo/frame_020.h"
+#include "openclaw_logo/frame_021.h"
+#include "openclaw_logo/frame_022.h"
+#include "openclaw_logo/frame_023.h"
+
+#define OPENCLAW_LOGO_FRAME_COUNT 24
+
+const uint16_t* const OPENCLAW_LOGO_FRAMES[] PROGMEM = {
+    ocl_frame_000, ocl_frame_001, ocl_frame_002, ocl_frame_003,
+    ocl_frame_004, ocl_frame_005, ocl_frame_006, ocl_frame_007,
+    ocl_frame_008, ocl_frame_009, ocl_frame_010, ocl_frame_011,
+    ocl_frame_012, ocl_frame_013, ocl_frame_014, ocl_frame_015,
+    ocl_frame_016, ocl_frame_017, ocl_frame_018, ocl_frame_019,
+    ocl_frame_020, ocl_frame_021, ocl_frame_022, ocl_frame_023,
+};
+
+// ============================================================================
 // Animation Registry
 // ============================================================================
 
@@ -66,8 +152,19 @@ struct AnimationSet {
     uint16_t frameCount;
 };
 
+<<<<<<< HEAD
 #define ANIMATION_COUNT 1
 
 const AnimationSet ANIMATION_SETS[ANIMATION_COUNT] = {
     { "octopus_emoji", OCTOPUS_EMOJI_FRAMES, OCTOPUS_EMOJI_FRAME_COUNT },
+=======
+#define ANIMATION_COUNT 5
+
+const AnimationSet ANIMATION_SETS[ANIMATION_COUNT] = {
+    { "lobster",        LOBSTER_FRAMES,        LOBSTER_FRAME_COUNT },
+    { "octopus",        OCTOPUS_FRAMES,        OCTOPUS_FRAME_COUNT },
+    { "octopus_emoji",  OCTOPUS_EMOJI_FRAMES,  OCTOPUS_EMOJI_FRAME_COUNT },
+    { "openclaw_emoji", OPENCLAW_EMOJI_FRAMES, OPENCLAW_EMOJI_FRAME_COUNT },
+    { "openclaw_logo",  OPENCLAW_LOGO_FRAMES,  OPENCLAW_LOGO_FRAME_COUNT },
+>>>>>>> origin/master
 };
