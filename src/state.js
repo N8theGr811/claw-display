@@ -21,7 +21,7 @@ const EventEmitter = require('events');
 
 // How long to keep the display ACTIVE after the last active poll signal.
 // Short enough to feel responsive, long enough to avoid flicker.
-const DEBOUNCE_MS = 5000;
+const DEBOUNCE_MS = 3000;
 
 class StateMachine extends EventEmitter {
     constructor() {
